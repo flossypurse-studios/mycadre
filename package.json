@@ -1,0 +1,45 @@
+{
+  "name": "mycadre",
+  "version": "0.1.0",
+  "description": "Git worktrees that are ready to work: create a branch's worktree with your env files copied and setup run, all tracked and cleaned up.",
+  "keywords": [
+    "git",
+    "worktree",
+    "workspace",
+    "cli",
+    "parallel",
+    "branches",
+    "monorepo",
+    "developer-tools"
+  ],
+  "type": "module",
+  "bin": {
+    "mycadre": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --loader ts-node/esm src/cli.ts",
+    "test": "node --test",
+    "prepublishOnly": "npm run build"
+  },
+  "license": "MIT",
+  "author": "mycadre",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flossypurse-studios/mycadre.git"
+  },
+  "homepage": "https://mycadre.dev",
+  "bugs": {
+    "url": "https://github.com/flossypurse-studios/mycadre/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

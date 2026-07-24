@@ -1,0 +1,53 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CLI = path.resolve(__dirname, "../dist/cli.js");
+
+function sh(args, cwd) {
+  return execFileSync("node", [CLI, ...args], { cwd, encoding: "utf8" });
+}
+
+function git(args, cwd) {
+  execFileSync("git", args, { cwd, stdio: "ignore" });
+}
+
+test("create/list/remove worktree end to end", () => {
+  assert.ok(existsSync(CLI), "run `npm run build` before tests");
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-test-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    writeFileSync(path.join(repo, ".env"), "SECRET=1\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    assert.ok(existsSync(path.join(repo, "mycadre.json")), "config written");
+
+    sh(["create", "feature/x"], repo);
+    const wt = path.join(worktrees, "feature-x");
+    assert.ok(existsSync(wt), "worktree created");
+    assert.equal(readFileSync(path.join(wt, ".env"), "utf8"), "SECRET=1\n", ".env copied");
+
+    const list = sh(["list"], repo);
+    assert.match(list, /feature\/x/);
+    assert.match(list, /\bok\b/);
+
+    sh(["remove", "feature/x", "--force"], repo);
+    assert.doesNotMatch(sh(["list"], repo), /feature\/x/);
+    assert.ok(!existsSync(wt), "worktree removed");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
