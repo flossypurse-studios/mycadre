@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>mycadre — git worktrees that are ready to work</title>
+<meta name="description" content="mycadre is a zero-config CLI that creates a git worktree for a branch with your env files copied, your setup command run, and everything tracked so cleanup is one command." />
+<meta property="og:title" content="mycadre — git worktrees that are ready to work" />
+<meta property="og:description" content="Create a branch's worktree with your .env files copied and setup run — all tracked and cleaned up." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://mycadre.dev" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236d5efc'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='monospace' font-weight='bold'%3Em%3C/text%3E%3C/svg%3E" />
+<style>
+:root{
+  --bg:#0c0d12; --panel:#14161f; --panel2:#1b1e2b; --border:#262a3a;
+  --fg:#e7e9f0; --muted:#9aa0b4; --accent:#7d6ffb; --accent2:#4fd1c5;
+  --code:#0a0b10;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,pre{font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.wrap{max-width:860px;margin:0 auto;padding:0 24px}
+header{border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(12,13,18,.85);backdrop-filter:blur(10px);z-index:10}
+.nav{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
+.logo{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#a78bfa);display:grid;place-items:center;color:#fff;font-family:monospace;font-weight:700}
+.nav-links{display:flex;gap:22px;font-size:14px}
+.nav-links a{color:var(--muted)}
+.nav-links a:hover{color:var(--fg);text-decoration:none}
+.hero{padding:84px 0 56px;text-align:center}
+.hero h1{font-size:52px;line-height:1.05;margin:0 0 18px;letter-spacing:-1.5px;font-weight:800}
+.hero .grad{background:linear-gradient(120deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{font-size:20px;color:var(--muted);max-width:620px;margin:0 auto 32px}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{padding:12px 22px;border-radius:9px;font-weight:600;font-size:15px;border:1px solid var(--border)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.primary:hover{background:#6a5cf0;text-decoration:none}
+.btn.ghost{background:var(--panel);color:var(--fg)}
+.btn.ghost:hover{background:var(--panel2);text-decoration:none}
+.install{margin:28px auto 0;max-width:420px}
+.install pre{background:var(--code);border:1px solid var(--border);border-radius:9px;padding:14px 18px;margin:0;text-align:left;overflow-x:auto}
+.install .prompt{color:var(--accent2)}
+section{padding:52px 0;border-top:1px solid var(--border)}
+h2{font-size:30px;letter-spacing:-.5px;margin:0 0 12px}
+.sub{color:var(--muted);margin:0 0 28px;font-size:17px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:640px){.grid{grid-template-columns:1fr}.hero h1{font-size:38px}}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px}
+.card h3{margin:0 0 8px;font-size:17px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+pre.block{background:var(--code);border:1px solid var(--border);border-radius:10px;padding:18px;overflow-x:auto;font-size:14px;line-height:1.7}
+.cmt{color:#6b7185}
+.prompt{color:var(--accent2)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.5px}
+td code{background:var(--panel2);padding:2px 7px;border-radius:5px;font-size:13px;white-space:nowrap}
+footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font-size:14px;text-align:center}
+.kv{color:var(--accent)}
+.step{color:var(--muted)}
+.step b{color:var(--fg)}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <div class="brand"><span class="logo">m</span>mycadre</div>
+    <nav class="nav-links">
+      <a href="#quickstart">Quick start</a>
+      <a href="#commands">Commands</a>
+      <a href="#config">Config</a>
+      <a href="https://github.com/flossypurse-studios/mycadre">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero" style="border-top:none">
+    <h1>Git worktrees that are<br><span class="grad">ready to work.</span></h1>
+    <p>A fresh <code>git worktree</code> is never actually ready — your <code>.env</code> files are missing and dependencies aren't installed. <b>mycadre</b> creates the worktree, copies your local config, runs your setup, and tracks it so cleanup is one command.</p>
+    <div class="cta">
+      <a class="btn primary" href="#quickstart">Get started</a>
+      <a class="btn ghost" href="https://github.com/flossypurse-studios/mycadre">View source</a>
+    </div>
+    <div class="install">
+      <pre><span class="prompt">$</span> npm install -g mycadre</pre>
+    </div>
+  </section>
+
+  <section id="why">
+    <h2>Why it exists</h2>
+    <p class="sub">Worktrees are great for working several branches at once — reviewing a PR while your feature branch builds, or running a fleet of AI coding agents in parallel, each in its own checkout. But every fresh checkout starts broken.</p>
+    <div class="grid">
+      <div class="card"><h3>Env files are gone</h3><p>Gitignored files like <code>.env</code> never make it into a new worktree. mycadre copies the ones you name.</p></div>
+      <div class="card"><h3>Nothing is installed</h3><p>No <code>node_modules</code>, no build. mycadre runs your setup command right after creating the checkout.</p></div>
+      <div class="card"><h3>Orphans pile up</h3><p>It's easy to forget which directories you made. mycadre tracks every worktree so listing and cleanup are trivial.</p></div>
+      <div class="card"><h3>Zero config to start</h3><p>One <code>init</code> writes a small <code>mycadre.json</code> you commit and share with your team. No global setup.</p></div>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <h2>Quick start</h2>
+    <p class="sub">Requires Node.js &ge; 18 and <code>git</code> on your PATH.</p>
+<pre class="block"><span class="cmt"># in your project's git repo</span>
+<span class="prompt">$</span> mycadre init                 <span class="cmt"># writes mycadre.json (edit to taste)</span>
+<span class="prompt">$</span> mycadre create feature/login <span class="cmt"># new branch + worktree, env copied, setup run</span>
+<span class="prompt">$</span> mycadre list                 <span class="cmt"># see your tracked worktrees</span>
+<span class="prompt">$</span> mycadre remove feature/login <span class="cmt"># delete the worktree and its branch</span>
+<span class="prompt">$</span> mycadre clean                <span class="cmt"># prune worktrees git already dropped</span></pre>
+  </section>
+
+  <section id="commands">
+    <h2>Commands</h2>
+    <p class="sub">Five commands, that's the whole surface.</p>
+    <table>
+      <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>mycadre init</code></td><td>Create a <code>mycadre.json</code> config at the repo root.</td></tr>
+        <tr><td><code>mycadre create &lt;branch&gt; [--from &lt;base&gt;]</code></td><td>Create a worktree for <code>&lt;branch&gt;</code> (new branch off <code>&lt;base&gt;</code> or the current branch, unless it already exists), copy configured files into it, and run the setup command.</td></tr>
+        <tr><td><code>mycadre list</code></td><td>List tracked worktrees and flag any that have gone missing.</td></tr>
+        <tr><td><code>mycadre remove &lt;branch&gt; [--keep-branch] [--force]</code></td><td>Remove the worktree and (unless <code>--keep-branch</code>) delete the branch.</td></tr>
+        <tr><td><code>mycadre clean</code></td><td>Prune git worktrees and drop stale tracking entries.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="config">
+    <h2>Configuration</h2>
+    <p class="sub"><code>mycadre init</code> writes a <code>mycadre.json</code> at your repo root:</p>
+<pre class="block">{
+  <span class="kv">"worktreeDir"</span>: <span class="prompt">"../mycadre-worktrees"</span>,
+  <span class="kv">"copy"</span>: [<span class="prompt">".env"</span>, <span class="prompt">".env.local"</span>],
+  <span class="kv">"setup"</span>: <span class="prompt">"npm install"</span>
+}</pre>
+    <p class="step" style="margin-top:20px"><b>worktreeDir</b> — where worktrees are created, relative to the repo root.</p>
+    <p class="step"><b>copy</b> — files/directories copied from the repo root into each new worktree (typically gitignored local config). Missing entries are skipped silently.</p>
+    <p class="step"><b>setup</b> — a shell command run inside the new worktree after creation, or <code>null</code> to skip.</p>
+    <p class="sub" style="margin-top:22px">Commit <code>mycadre.json</code> so your team shares the same setup. mycadre stores tracking data in <code>.mycadre-state.json</code> — add that to your <code>.gitignore</code>.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><b>mycadre</b> — git worktrees that are ready to work. MIT licensed.</p>
+    <p><a href="https://github.com/flossypurse-studios/mycadre">GitHub</a> &nbsp;·&nbsp; <a href="https://github.com/flossypurse-studios/mycadre/issues">Issues</a> &nbsp;·&nbsp; <code>npm install -g mycadre</code></p>
+  </div>
+</footer>
+</body>
+</html>
