@@ -51,3 +51,9 @@ test("create/list/remove worktree end to end", () => {
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("--version prints the package version", () => {
+  const out = sh(["--version"]);
+  assert.match(out, /0\.1\.0/, "--version outputs version");
+  assert.equal(sh(["-v"]).trim(), sh(["version"]).trim(), "-v and version match");
+});

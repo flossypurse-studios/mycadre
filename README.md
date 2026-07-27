@@ -18,6 +18,14 @@ and it's easy to lose track of the directories you created. `mycadre` fixes that
 npm install -g mycadre
 ```
 
+> npm package coming soon. Until it's published, install from source:
+> ```sh
+> git clone https://github.com/flossypurse-studios/mycadre.git
+> cd mycadre
+> npm install && npm run build
+> npm link   # makes `mycadre` available globally
+> ```
+
 Requires Node.js >= 18 and `git` on your PATH.
 
 ## Quick start

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { runInit } from "./commands/init.js";
 import { runCreate } from "./commands/create.js";
 import { runList } from "./commands/list.js";
@@ -25,6 +26,15 @@ Config (mycadre.json at repo root):
     "setup": "npm install"
   }
 `;
+
+function getVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 function parseFlags(args: string[]): { positional: string[]; flags: Record<string, string | boolean> } {
   const positional: string[] = [];
@@ -72,6 +82,11 @@ function main(): void {
         break;
       case "clean":
         runClean();
+        break;
+      case "--version":
+      case "-v":
+      case "version":
+        console.log(getVersion());
         break;
       case "--help":
       case "-h":
