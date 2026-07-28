@@ -97,8 +97,8 @@ function main(): void {
         console.log(HELP);
         break;
       default:
-        console.error(`Unknown command: ${cmd}\n`);
-        console.log(HELP);
+        console.error(`Unknown command: ${cmd}`);
+        console.error(`Run \`mycadre --help\` to see available commands.`);
         process.exitCode = 1;
     }
   } catch (err) {
