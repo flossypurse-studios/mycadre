@@ -57,3 +57,17 @@ test("--version prints the package version", () => {
   assert.match(out, /0\.1\.0/, "--version outputs version");
   assert.equal(sh(["-v"]).trim(), sh(["version"]).trim(), "-v and version match");
 });
+
+test("unknown command exits 1 and suggests --help", () => {
+  let err;
+  try {
+    execFileSync("node", [CLI, "bogus"], { encoding: "utf8", stdio: "pipe" });
+  } catch (e) {
+    err = e;
+  }
+  assert.ok(err, "unknown command should exit non-zero");
+  assert.equal(err.status, 1, "exit code is 1");
+  const stderr = err.stderr ?? "";
+  assert.match(stderr, /Unknown command: bogus/, "reports the bad command");
+  assert.match(stderr, /mycadre --help/, "suggests running --help");
+});
