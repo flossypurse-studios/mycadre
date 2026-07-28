@@ -18,6 +18,8 @@ Usage:
   mycadre remove <branch> [--keep-branch] [--force]
                                       Remove a worktree and its branch
   mycadre clean                      Prune worktrees and drop stale tracking entries
+  mycadre --version                  Print the installed version
+  mycadre --help                     Show this help
 
 Config (mycadre.json at repo root):
   {
