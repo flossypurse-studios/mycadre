@@ -529,3 +529,40 @@ test("create copies configured files and skips missing ones without crashing", (
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create with existing branch reuses it and prints Using existing branch", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-test-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    // Create an existing branch (but no worktree yet)
+    git(["checkout", "-b", "feature/existing"], repo);
+    writeFileSync(path.join(repo, "file-on-branch.txt"), "content\n");
+    git(["add", "file-on-branch.txt"], repo);
+    git(["commit", "-m", "add file"], repo);
+    git(["checkout", "master"], repo); // Switch back to master
+
+    sh(["init"], repo);
+
+    // Now create a worktree for the existing branch
+    const out = sh(["create", "feature/existing"], repo);
+    assert.match(out, /Using existing branch/, "prints Using existing branch message");
+
+    const wt = path.join(worktrees, "feature-existing");
+    assert.ok(existsSync(wt), "worktree created");
+    assert.ok(existsSync(path.join(wt, "file-on-branch.txt")), "worktree has branch content");
+
+    const listOut = sh(["list"], repo);
+    assert.match(listOut, /feature\/existing/, "branch tracked in list");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
