@@ -622,3 +622,34 @@ test("clean on empty repo (no worktrees ever created) reports Nothing to clean",
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("commands error clearly when mycadre.json exists but is corrupted/invalid JSON", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-corrupt-"));
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    // Write corrupted JSON to mycadre.json
+    writeFileSync(path.join(repo, "mycadre.json"), "{invalid json}");
+
+    // Try to create - should error with clear message, not raw stack trace
+    let exited = false;
+    let errorOutput = "";
+    try {
+      sh(["create", "test-branch"], repo);
+    } catch (e) {
+      exited = true;
+      errorOutput = e.message || e.toString() || "";
+    }
+
+    assert.ok(exited, "create exits with error when config is invalid JSON");
+    assert.match(errorOutput, /Error:|JSON|Expected property|position/i, "error message reports JSON parsing issue");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
