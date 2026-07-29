@@ -84,6 +84,40 @@ test("clean untracks a stale worktree entry", () => {
   }
 });
 
+test("create --from bases the new branch on the given branch", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-from-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    // Create a base branch with a unique file, then return to the default branch.
+    const base = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: repo,
+      encoding: "utf8",
+    }).trim();
+    git(["checkout", "-b", "release"], repo);
+    writeFileSync(path.join(repo, "RELEASE.txt"), "v1\n");
+    git(["add", "RELEASE.txt"], repo);
+    git(["commit", "-m", "release marker"], repo);
+    git(["checkout", base], repo);
+
+    sh(["init"], repo);
+    const out = sh(["create", "hotfix/y", "--from", "release"], repo);
+    assert.match(out, /from 'release'/, "reports the requested base branch");
+    const wt = path.join(worktrees, "hotfix-y");
+    assert.ok(existsSync(path.join(wt, "RELEASE.txt")), "branch inherits base branch commit");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
 test("--version prints the package version", () => {
   const out = sh(["--version"]);
   assert.match(out, /0\.1\.0/, "--version outputs version");
