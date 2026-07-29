@@ -260,3 +260,24 @@ test("init writes mycadre.json with expected defaults", () => {
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("list shows no-worktrees message when none exist", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-list-empty-"));
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    const res = spawnSync("node", [CLI, "list"], { cwd: repo, encoding: "utf8" });
+    assert.equal(res.status, 0, "list with no worktrees exits 0");
+    const output = res.stdout + res.stderr;
+    assert.match(output, /No mycadre worktrees tracked/, "shows no-worktrees message");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
