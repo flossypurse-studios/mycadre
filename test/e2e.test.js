@@ -679,3 +679,32 @@ test("create with a deeply nested branch name replaces all slashes in the worktr
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create detects worktree dir collision (feature/foo-bar vs feature/foo/bar both map to feature-foo-bar) and errors", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-collision-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/foo-bar"], repo);
+
+    // Now try to create feature/foo/bar which would collide
+    const res = spawnSync("node", [CLI, "create", "feature/foo/bar"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.notEqual(res.status, 0, "create detects collision and exits with error");
+    const combined = res.stdout + res.stderr;
+    assert.match(combined, /collision|already exists|conflicts/i, "error mentions the collision or path conflict");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
