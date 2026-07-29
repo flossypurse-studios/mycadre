@@ -778,3 +778,35 @@ test("clean does NOT remove worktree dir when git branch was manually deleted", 
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create with invalid branch name (spaces) errors with git's message", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-invalid-branch-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    // Try to create a branch with spaces (invalid in git)
+    let err = null;
+    try {
+      sh(["create", "feature with spaces"], repo);
+    } catch (e) {
+      err = e;
+    }
+
+    assert.ok(err, "should exit with error for invalid branch name");
+    assert.equal(err.status, 1, "exit code is 1");
+    const combined = err.message + (err.stderr ?? "");
+    assert.match(combined, /not a valid branch name|invalid/, "error message references the invalid name");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
