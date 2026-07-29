@@ -492,3 +492,40 @@ test("create errors when target path already exists", () => {
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create copies configured files and skips missing ones without crashing", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-copy-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    // Configure copy: one file that exists, one that does not.
+    const cfgPath = path.join(repo, "mycadre.json");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.copy = [".env", "missing.txt"];
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+    // Create only the .env file (missing.txt intentionally absent).
+    writeFileSync(path.join(repo, ".env"), "SECRET=1\n");
+
+    const out = sh(["create", "feature/copy"], repo);
+    assert.match(out, /Copied \.env/, "reports copying the present file");
+    assert.doesNotMatch(out, /Copied missing\.txt/, "does not report the missing file");
+
+    const wt = path.join(worktrees, "feature-copy");
+    assert.ok(existsSync(path.join(wt, ".env")), "present file copied into worktree");
+    assert.ok(!existsSync(path.join(wt, "missing.txt")), "missing file skipped gracefully");
+    assert.match(readFileSync(path.join(wt, ".env"), "utf8"), /SECRET=1/, "copied content matches");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
