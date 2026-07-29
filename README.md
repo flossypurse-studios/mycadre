@@ -78,6 +78,21 @@ tracking data in `.mycadre-state.json` — add that to your `.gitignore`.
 immediately work in: local env files present, dependencies installed, and a record
 of what you created so cleanup is one command instead of archaeology.
 
+## Troubleshooting
+
+- **`Not inside a git repository (or git is not installed).`** — `create`, `list`,
+  `remove`, and `clean` must be run from inside your project's git repo. Run `git status`
+  to confirm you're in one, and make sure `git` is on your PATH.
+- **`Target path already exists: <path>`** — a directory for that branch already exists
+  in your `worktreeDir`. Remove it with `mycadre remove <branch>` (or delete the stray
+  directory) before recreating it.
+- **`No tracked worktree for branch '<branch>'.`** — `remove` didn't find that branch in
+  mycadre's tracking data, so there was nothing to remove. This is a warning, not an
+  error (mycadre exits 0). Run `mycadre list` to see what's tracked.
+- **No `mycadre.json`?** — that's fine: mycadre falls back to sensible defaults
+  (`worktreeDir: "../mycadre-worktrees"`, `setup: "npm install"`). Run `mycadre init` to
+  write a config you can customize and share with your team.
+
 ## License
 
 MIT © mycadre
