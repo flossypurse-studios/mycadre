@@ -84,6 +84,41 @@ test("clean untracks a stale worktree entry", () => {
   }
 });
 
+test("remove of a stale worktree (dir deleted) warns and untracks cleanly, exit 0", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-remove-stale-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/gone"], repo);
+    const wt = path.join(worktrees, "feature-gone");
+    assert.ok(existsSync(wt), "worktree created");
+
+    // Simulate a stale entry: delete the worktree dir out from under git.
+    rmSync(wt, { recursive: true, force: true });
+
+    // remove should not throw even though the path is gone; it exits 0.
+    const res = spawnSync("node", [CLI, "remove", "feature/gone"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.equal(res.status, 0, "remove of stale worktree exits 0");
+    const combined = res.stdout + res.stderr;
+    assert.match(combined, /Removed 'feature\/gone'\./, "confirms removal");
+    assert.doesNotMatch(sh(["list"], repo), /feature\/gone/, "entry no longer tracked");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
 test("create --from bases the new branch on the given branch", () => {
   const repo = mkdtempSync(path.join(tmpdir(), "mycadre-from-"));
   const worktrees = path.resolve(repo, "../mycadre-worktrees");
