@@ -153,6 +153,39 @@ test("create --from bases the new branch on the given branch", () => {
   }
 });
 
+test("create --from with a non-existent base branch errors clearly and exits 1", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-badfrom-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    let err;
+    try {
+      execFileSync("node", [CLI, "create", "feature/z", "--from", "no-such-branch"], {
+        cwd: repo,
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err, "create with bad --from exits non-zero");
+    assert.equal(err.status, 1, "exits with code 1");
+    assert.match(err.stderr, /Base branch 'no-such-branch' does not exist/, "clear error message");
+    assert.ok(!existsSync(path.join(worktrees, "feature-z")), "no worktree dir left behind");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
 test("--version prints the package version", () => {
   const out = sh(["--version"]);
   assert.match(out, /0\.1\.0/, "--version outputs version");

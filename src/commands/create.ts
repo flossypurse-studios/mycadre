@@ -28,6 +28,11 @@ export function runCreate(branch: string, opts: CreateOptions): void {
     git(["worktree", "add", targetPath, branch], root);
   } else {
     const base = opts.from ?? currentBranch(root);
+    if (opts.from && !branchExists(opts.from, root)) {
+      throw new Error(
+        `Base branch '${opts.from}' does not exist. Create it first, or pass an existing branch to --from.`
+      );
+    }
     console.log(`Creating new branch '${branch}' from '${base}'`);
     git(["worktree", "add", "-b", branch, targetPath, base], root);
   }
