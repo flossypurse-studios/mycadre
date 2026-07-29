@@ -281,3 +281,27 @@ test("list shows no-worktrees message when none exist", () => {
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("create without a git repo errors with clear message and exits 1", () => {
+  const notRepo = mkdtempSync(path.join(tmpdir(), "mycadre-create-nogit-"));
+  let err;
+  try {
+    execFileSync("node", [CLI, "create", "feature/x"], {
+      cwd: notRepo,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (e) {
+    err = e;
+  } finally {
+    rmSync(notRepo, { recursive: true, force: true });
+  }
+  assert.ok(err, "create outside a git repo should exit non-zero");
+  assert.equal(err.status, 1, "exit code is 1");
+  const stderr = err.stderr ?? "";
+  assert.match(
+    stderr,
+    /Not inside a git repository/,
+    "error says not inside a git repository"
+  );
+});
