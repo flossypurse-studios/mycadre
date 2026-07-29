@@ -420,3 +420,36 @@ test("remove --keep-branch removes worktree but preserves the git branch", () =>
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create runs the configured setup command inside the new worktree", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-test-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    // Configure a setup command that writes a marker file into the worktree.
+    const cfgPath = path.join(repo, "mycadre.json");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.setup = "echo ran > setup-marker.txt";
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+    const out = sh(["create", "feature/setup"], repo);
+    assert.match(out, /Running setup:/, "announces the setup command");
+
+    const wt = path.join(worktrees, "feature-setup");
+    const marker = path.join(wt, "setup-marker.txt");
+    assert.ok(existsSync(marker), "setup command ran in the worktree");
+    assert.match(readFileSync(marker, "utf8"), /ran/, "marker file has expected content");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
