@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -157,4 +157,28 @@ test("unknown command exits 1 and suggests --help", () => {
   const stderr = err.stderr ?? "";
   assert.match(stderr, /Unknown command: bogus/, "reports the bad command");
   assert.match(stderr, /mycadre --help/, "suggests running --help");
+});
+
+test("remove of an untracked branch warns clearly and exits 0", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-rm-"));
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+    sh(["init"], repo);
+
+    const res = spawnSync("node", [CLI, "remove", "does/not-exist"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.equal(res.status, 0, "removing an untracked branch is not fatal");
+    assert.match(res.stderr, /No tracked worktree for branch 'does\/not-exist'/, "warns clearly");
+    assert.match(res.stdout, /Removed 'does\/not-exist'/, "still confirms completion");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
 });
