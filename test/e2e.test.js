@@ -453,3 +453,42 @@ test("create runs the configured setup command inside the new worktree", () => {
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create errors when target path already exists", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-test-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  let err;
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    // Pre-create the target path to simulate it already existing
+    const targetPath = path.join(worktrees, "feature-exists");
+    execFileSync("mkdir", ["-p", targetPath], { stdio: "ignore" });
+    writeFileSync(path.join(targetPath, "somefile.txt"), "collision\n");
+
+    try {
+      execFileSync("node", [CLI, "create", "feature/exists"], {
+        cwd: repo,
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+    } catch (e) {
+      err = e;
+    }
+
+    assert.ok(err, "should exit non-zero when target exists");
+    assert.equal(err.status, 1, "exit code is 1");
+    assert.match(err.stderr ?? "", /Target path already exists/, "clear error message");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
