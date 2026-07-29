@@ -58,6 +58,27 @@ test("--version prints the package version", () => {
   assert.equal(sh(["-v"]).trim(), sh(["version"]).trim(), "-v and version match");
 });
 
+test("no arguments prints help", () => {
+  const out = sh([]);
+  assert.match(out, /Usage:/, "prints usage section");
+  assert.match(out, /mycadre init/, "lists the init command");
+});
+
+test("git-requiring command outside a repo errors clearly and exits 1", () => {
+  const outside = mkdtempSync(path.join(tmpdir(), "mycadre-nogit-"));
+  let err;
+  try {
+    execFileSync("node", [CLI, "list"], { cwd: outside, encoding: "utf8", stdio: "pipe" });
+  } catch (e) {
+    err = e;
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+  assert.ok(err, "should exit non-zero outside a git repo");
+  assert.equal(err.status, 1, "exit code is 1");
+  assert.match(err.stderr ?? "", /Not inside a git repository/, "clear error message");
+});
+
 test("unknown command exits 1 and suggests --help", () => {
   let err;
   try {
