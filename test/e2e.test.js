@@ -159,6 +159,33 @@ test("unknown command exits 1 and suggests --help", () => {
   assert.match(stderr, /mycadre --help/, "suggests running --help");
 });
 
+test("create without a branch arg errors with usage info and exits 1", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-create-noarg-"));
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+    sh(["init"], repo);
+
+    let err;
+    try {
+      execFileSync("node", [CLI, "create"], { cwd: repo, encoding: "utf8", stdio: "pipe" });
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err, "create without branch should exit non-zero");
+    assert.equal(err.status, 1, "exit code is 1");
+    const stderr = err.stderr ?? "";
+    assert.match(stderr, /Usage: mycadre create/, "shows usage for create command");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("remove of an untracked branch warns clearly and exits 0", () => {
   const repo = mkdtempSync(path.join(tmpdir(), "mycadre-rm-"));
   try {
