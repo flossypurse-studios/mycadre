@@ -810,3 +810,14 @@ test("create with invalid branch name (spaces) errors with git's message", () =>
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("--help works outside a git repo", () => {
+  const outside = mkdtempSync(path.join(tmpdir(), "mycadre-nogit-help-"));
+  try {
+    const out = execFileSync("node", [CLI, "--help"], { cwd: outside, encoding: "utf8" });
+    assert.match(out, /Usage:/, "prints usage section");
+    assert.match(out, /mycadre init/, "lists the init command");
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
