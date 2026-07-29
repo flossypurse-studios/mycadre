@@ -236,3 +236,27 @@ test("remove without a branch arg errors with usage info and exits 1", () => {
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("init writes mycadre.json with expected defaults", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-init-defaults-"));
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    const configPath = path.join(repo, "mycadre.json");
+    assert.ok(existsSync(configPath), "mycadre.json file created");
+
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.equal(config.worktreeDir, "../mycadre-worktrees", "worktreeDir default is correct");
+    assert.deepEqual(config.copy, [".env", ".env.local"], "copy default is correct");
+    assert.equal(config.setup, null, "setup default is null");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
