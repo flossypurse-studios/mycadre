@@ -52,6 +52,38 @@ test("create/list/remove worktree end to end", () => {
   }
 });
 
+test("clean untracks a stale worktree entry", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-clean-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/stale"], repo);
+    const wt = path.join(worktrees, "feature-stale");
+    assert.ok(existsSync(wt), "worktree created");
+
+    // Simulate a stale entry: remove the worktree dir out from under git.
+    rmSync(wt, { recursive: true, force: true });
+    assert.match(sh(["list"], repo), /MISSING/, "list flags the stale entry");
+
+    const out = sh(["clean"], repo);
+    assert.match(out, /Untracking stale entry: feature\/stale/, "reports the untracked branch");
+    assert.match(out, /Cleaned 1 stale entry\b/, "summarizes one cleaned entry");
+    assert.doesNotMatch(sh(["list"], repo), /feature\/stale/, "entry no longer listed");
+    assert.match(sh(["clean"], repo), /Nothing to clean\./, "second clean is a no-op");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
 test("--version prints the package version", () => {
   const out = sh(["--version"]);
   assert.match(out, /0\.1\.0/, "--version outputs version");
