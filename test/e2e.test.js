@@ -370,3 +370,53 @@ test("list shows mixed status (ok/MISSING) for multiple worktrees", () => {
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("remove --keep-branch removes worktree but preserves the git branch", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-keep-branch-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/keep"], repo);
+    const wt = path.join(worktrees, "feature-keep");
+    assert.ok(existsSync(wt), "worktree created");
+
+    // Verify branch exists before remove
+    const branchesBefore = execFileSync("git", ["branch"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.match(branchesBefore, /feature\/keep/, "branch exists before remove");
+
+    sh(["remove", "feature/keep", "--keep-branch"], repo);
+    assert.ok(!existsSync(wt), "worktree directory removed");
+
+    // Verify branch still exists after remove --keep-branch
+    const branchesAfter = execFileSync("git", ["branch"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.match(
+      branchesAfter,
+      /feature\/keep/,
+      "branch preserved with --keep-branch flag"
+    );
+
+    // Verify the entry is no longer tracked in mycadre
+    assert.doesNotMatch(
+      sh(["list"], repo),
+      /feature\/keep/,
+      "entry removed from mycadre tracking"
+    );
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
