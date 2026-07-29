@@ -566,3 +566,24 @@ test("create with existing branch reuses it and prints Using existing branch", (
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("clean on empty repo (no worktrees ever created) reports Nothing to clean", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-clean-empty-"));
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    // Run clean on a repo that has never had any worktrees
+    const out = sh(["clean"], repo);
+    assert.match(out, /Nothing to clean\./, "reports Nothing to clean on empty state");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
