@@ -741,3 +741,40 @@ test("create detects worktree dir collision (feature/foo-bar vs feature/foo/bar 
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("clean does NOT remove worktree dir when git branch was manually deleted", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-clean-manual-delete-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/manual-delete"], repo);
+    const wt = path.join(worktrees, "feature-manual-delete");
+    assert.ok(existsSync(wt), "worktree created");
+    writeFileSync(path.join(wt, "test.txt"), "content\n");
+
+    // Manually remove the git worktree metadata (orphaning the directory on disk)
+    const gitWorktreeDir = path.join(repo, ".git", "worktrees", "feature-manual-delete");
+    if (existsSync(gitWorktreeDir)) {
+      rmSync(gitWorktreeDir, { recursive: true });
+    }
+
+    // clean should NOT remove the orphaned directory (defensive behavior)
+    // After prune, git won't know about this worktree anymore, so clean will see it as stale in state
+    // and untrack it, but NOT remove the directory
+    const out = sh(["clean"], repo);
+    // Should untrack it but preserve the directory
+    assert.ok(existsSync(wt), "worktree directory still exists (not removed by clean)");
+    assert.ok(existsSync(path.join(wt, "test.txt")), "worktree content preserved");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
