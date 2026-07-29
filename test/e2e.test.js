@@ -653,3 +653,29 @@ test("commands error clearly when mycadre.json exists but is corrupted/invalid J
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("create with a deeply nested branch name replaces all slashes in the worktree dir", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-nested-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/user/deep-fix"], repo);
+
+    const wt = path.join(worktrees, "feature-user-deep-fix");
+    assert.ok(existsSync(wt), "nested branch worktree dir has all slashes replaced");
+
+    const list = sh(["list"], repo);
+    assert.match(list, /feature\/user\/deep-fix/, "list shows the original branch name");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
