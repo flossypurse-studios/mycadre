@@ -305,3 +305,33 @@ test("create without a git repo errors with clear message and exits 1", () => {
     "error says not inside a git repository"
   );
 });
+
+test("init is idempotent - running twice produces same config", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-init-idempotent-"));
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    // First init
+    sh(["init"], repo);
+    const configPath = path.join(repo, "mycadre.json");
+    const config1 = readFileSync(configPath, "utf8");
+    const configObj1 = JSON.parse(config1);
+
+    // Second init
+    sh(["init"], repo);
+    const config2 = readFileSync(configPath, "utf8");
+    const configObj2 = JSON.parse(config2);
+
+    // Verify content is identical
+    assert.deepEqual(configObj1, configObj2, "config object is identical after second init");
+    assert.equal(config1, config2, "config file content is identical (byte-for-byte)");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
