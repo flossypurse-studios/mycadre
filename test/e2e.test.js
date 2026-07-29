@@ -335,3 +335,38 @@ test("init is idempotent - running twice produces same config", () => {
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("list shows mixed status (ok/MISSING) for multiple worktrees", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-list-mixed-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/a"], repo);
+    sh(["create", "feature/b"], repo);
+
+    // Both should show as "ok"
+    let list = sh(["list"], repo);
+    assert.match(list, /feature\/a.*ok/, "feature/a shows as ok");
+    assert.match(list, /feature\/b.*ok/, "feature/b shows as ok");
+
+    // Remove one worktree directory to make it MISSING
+    const wtA = path.join(worktrees, "feature-a");
+    rmSync(wtA, { recursive: true, force: true });
+
+    // Now feature/a should show as MISSING, feature/b as ok
+    list = sh(["list"], repo);
+    assert.match(list, /feature\/a.*MISSING/, "feature/a shows as MISSING after dir removal");
+    assert.match(list, /feature\/b.*ok/, "feature/b still shows as ok");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
