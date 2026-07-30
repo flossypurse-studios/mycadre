@@ -1214,3 +1214,49 @@ test("remove --keep-branch --force handles missing worktree dir gracefully", () 
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create --from works when base branch worktree is stale (dir deleted but branch exists)", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-stale-from-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    // Create a base worktree with a unique file
+    sh(["create", "release/v1"], repo);
+    const baseWt = path.join(worktrees, "release-v1");
+    assert.ok(existsSync(baseWt), "base worktree created");
+    writeFileSync(path.join(baseWt, "VERSION.txt"), "1.0.0\n");
+    git(["add", "VERSION.txt"], baseWt);
+    git(["commit", "-m", "version"], baseWt);
+
+    // Simulate stale state: delete the worktree directory but leave the branch
+    rmSync(baseWt, { recursive: true, force: true });
+    assert.ok(!existsSync(baseWt), "base worktree dir deleted");
+
+    // Verify the branch still exists (stale state)
+    const branches = execFileSync("git", ["branch"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.match(branches, /release\/v1/, "base branch still exists despite stale worktree");
+
+    // create --from should still work with the stale branch
+    const out = sh(["create", "hotfix/urgent", "--from", "release/v1"], repo);
+    assert.match(out, /from 'release\/v1'/, "reports the requested base branch");
+    
+    const newWt = path.join(worktrees, "hotfix-urgent");
+    assert.ok(existsSync(newWt), "new worktree created");
+    assert.ok(existsSync(path.join(newWt, "VERSION.txt")), "new branch inherits base branch commit despite stale worktree");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
