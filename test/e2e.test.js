@@ -1056,3 +1056,69 @@ test("create --from with a remote-only branch (not yet checked out locally)", ()
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("remove of fully orphaned worktree (dir deleted AND branch deleted) cleans up gracefully", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-orphan-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    // Set up repo and mycadre
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    // Initialize mycadre
+    sh(["init"], repo);
+
+    // Create a worktree via mycadre
+    sh(["create", "test-orphan"], repo);
+    const wt = path.join(worktrees, "test-orphan");
+    assert.ok(existsSync(wt), "worktree was created");
+
+    // Verify it's tracked
+    let listOutput = sh(["list"], repo);
+    assert.match(listOutput, /test-orphan/, "worktree is tracked in list");
+
+    // Now simulate catastrophic failure: both worktree dir AND branch are deleted
+    // First delete the worktree directory
+    rmSync(wt, { recursive: true, force: true });
+    assert.ok(!existsSync(wt), "worktree directory manually deleted");
+
+    // Then delete the branch from the main repo using force-all to ignore worktree state
+    // Use git worktree prune or git branch -D with worktree removal first
+    try {
+      git(["worktree", "remove", "--force", "test-orphan"], repo);
+    } catch (e) {
+      // worktree remove might fail if already gone, which is fine
+    }
+    
+    git(["branch", "-D", "test-orphan"], repo);
+    const branches = execFileSync("git", ["branch"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.doesNotMatch(branches, /test-orphan/, "branch was deleted");
+
+    // Now try to remove it - should handle the fully orphaned state gracefully
+    const res = spawnSync("node", [CLI, "remove", "test-orphan"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+
+    // Should succeed (exit 0)
+    assert.equal(res.status, 0, "remove of fully orphaned worktree exits 0");
+
+    // The entry should be removed from tracking
+    listOutput = sh(["list"], repo);
+    assert.doesNotMatch(listOutput, /test-orphan/, "orphaned entry was removed from tracking");
+
+    const combined = res.stdout + res.stderr;
+    assert.match(combined, /Removed 'test-orphan'\./, "confirms removal");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
