@@ -831,3 +831,22 @@ test("--version works outside a git repo", () => {
     rmSync(outside, { recursive: true, force: true });
   }
 });
+
+test("--help with unknown flag suggests help and exits gracefully", () => {
+  const outside = mkdtempSync(path.join(tmpdir(), "mycadre-unknown-flag-"));
+  try {
+    let err = null;
+    try {
+      execFileSync("node", [CLI, "--unknown-flag"], { cwd: outside, encoding: "utf8" });
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err, "should exit with error for unknown flag");
+    assert.equal(err.status, 1, "exit code is 1");
+    const output = err.stderr || err.stdout || "";
+    // Should suggest help or show usage info
+    assert.match(output, /help|usage|unknown/i, "error output mentions help or unknown flag");
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
