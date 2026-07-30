@@ -1260,3 +1260,48 @@ test("create --from works when base branch worktree is stale (dir deleted but br
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create with unicode/emoji in branch name handles sanitization correctly", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-unicode-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    // Create branch with emoji in the name
+    const branchName = "feature/🚀-rocket";
+    sh(["create", branchName], repo);
+
+    // Verify worktree was created with sanitized name (slashes converted to hyphens, emoji preserved in git branch)
+    const expectedWorktreeName = "feature-🚀-rocket";
+    const wt = path.join(worktrees, expectedWorktreeName);
+    assert.ok(existsSync(wt), `worktree created with emoji-safe name: ${expectedWorktreeName}`);
+
+    // Verify git branch exists with original name including emoji
+    const branches = execFileSync("git", ["branch"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.match(branches, /feature\/🚀-rocket/, "git branch created with original emoji name");
+
+    // List should show the branch with emoji
+    const list = sh(["list"], repo);
+    assert.match(list, /feature\/🚀-rocket/, "list shows branch with emoji");
+    assert.match(list, /\bok\b/, "worktree status shows ok");
+
+    // Remove should work with emoji branch
+    sh(["remove", branchName, "--force"], repo);
+    assert.doesNotMatch(sh(["list"], repo), /rocket/, "emoji branch removed");
+    assert.ok(!existsSync(wt), "worktree directory removed");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
