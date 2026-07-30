@@ -850,3 +850,39 @@ test("--help with unknown flag suggests help and exits gracefully", () => {
     rmSync(outside, { recursive: true, force: true });
   }
 });
+
+test("remove when .mycadre.json is missing (untracked state)", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-remove-no-config-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/test"], repo);
+    const wt = path.join(worktrees, "feature-test");
+    assert.ok(existsSync(wt), "worktree created");
+    assert.ok(existsSync(path.join(repo, "mycadre.json")), "mycadre.json exists");
+
+    // Simulate missing config file (corrupted or deleted)
+    rmSync(path.join(repo, "mycadre.json"));
+    assert.ok(!existsSync(path.join(repo, "mycadre.json")), "mycadre.json is removed");
+
+    // remove should still work gracefully with missing config, treating it as untracked
+    const res = spawnSync("node", [CLI, "remove", "feature/test"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.equal(res.status, 0, "remove exits 0 even when config is missing");
+    const combined = res.stdout + res.stderr;
+    assert.match(combined, /No tracked worktree|Removed/, "reports removal or missing entry");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
