@@ -1305,3 +1305,56 @@ test("create with unicode/emoji in branch name handles sanitization correctly", 
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("init idempotency: corrupted config recovery", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-corrupt-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    // First init succeeds
+    sh(["init"], repo);
+    const configPath = path.join(repo, "mycadre.json");
+    assert.ok(existsSync(configPath), "config written on first init");
+
+    // Corrupt the config file with invalid JSON
+    writeFileSync(configPath, '{ invalid json !!');
+
+    // Verify corrupted config causes create to fail with JSON error
+    let jsonErrorSeen = false;
+    try {
+      sh(["create", "feature/test"], repo);
+    } catch (e) {
+      assert.ok(e.message.includes("JSON"), "create fails with JSON error for corrupted config");
+      jsonErrorSeen = true;
+    }
+    assert.ok(jsonErrorSeen, "create command threw JSON error");
+
+    // Recovery: delete the corrupted file and reinit
+    rmSync(configPath);
+    const output = sh(["init"], repo);
+    assert.ok(existsSync(configPath), "config recreated after deletion and init");
+
+    // Verify the config is now valid JSON and usable
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.ok(config.worktreeDir, "config has worktreeDir after recreation");
+    assert.equal(config.worktreeDir, "../mycadre-worktrees", "worktreeDir correctly set");
+
+    // Verify the tool still works after config recreation
+    sh(["create", "feature/test"], repo);
+    const wt = path.join(worktrees, "feature-test");
+    assert.ok(existsSync(wt), "worktree creation works after config recreation");
+
+    const list = sh(["list"], repo);
+    assert.match(list, /feature\/test/, "list works after config recreation");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
