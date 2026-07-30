@@ -821,3 +821,13 @@ test("--help works outside a git repo", () => {
     rmSync(outside, { recursive: true, force: true });
   }
 });
+
+test("--version works outside a git repo", () => {
+  const outside = mkdtempSync(path.join(tmpdir(), "mycadre-nogit-version-"));
+  try {
+    const out = execFileSync("node", [CLI, "--version"], { cwd: outside, encoding: "utf8" });
+    assert.match(out, /0\.1\.0/, "--version outputs version outside git repo");
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
