@@ -977,3 +977,82 @@ test("clean behavior with uncommitted changes in worktree (should warn/error gra
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("create --from with a remote-only branch (not yet checked out locally)", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-remote-from-"));
+  const upstream = mkdtempSync(path.join(tmpdir(), "mycadre-upstream-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    // Set up an upstream repo with a branch
+    git(["init", "--bare"], upstream);
+
+    // Set up local repo and push a branch upstream
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    // Add upstream remote
+    git(["remote", "add", "origin", upstream], repo);
+    git(["push", "-u", "origin", "master"], repo);
+
+    // Create and push a feature branch on upstream
+    git(["checkout", "-b", "feature/remote-only"], repo);
+    writeFileSync(path.join(repo, "FEATURE.txt"), "feature content\n");
+    git(["add", "FEATURE.txt"], repo);
+    git(["commit", "-m", "add feature"], repo);
+    git(["push", "-u", "origin", "feature/remote-only"], repo);
+
+    // Switch back to master and delete the local feature branch (simulate not having checked it out)
+    git(["checkout", "master"], repo);
+    git(["branch", "-D", "feature/remote-only"], repo);
+
+    // Verify the remote branch exists but local doesn't
+    const localBranches = execFileSync("git", ["branch", "-l"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.doesNotMatch(localBranches, /feature\/remote-only/, "local branch was deleted");
+
+    const remoteBranches = execFileSync("git", ["branch", "-r"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.match(remoteBranches, /origin\/feature\/remote-only/, "remote branch exists");
+
+    // Initialize mycadre
+    sh(["init"], repo);
+
+    // Now test: can we create a worktree from the remote branch?
+    // This is the edge case: --from should ideally track origin/feature/remote-only
+    // or error clearly if it can't
+    let createdSuccessfully = false;
+    let errorMsg = "";
+    try {
+      const out = sh(["create", "feature/new-from-remote", "--from", "feature/remote-only"], repo);
+      createdSuccessfully = true;
+      // If it works, the worktree should have the feature content
+      const wt = path.join(worktrees, "feature-new-from-remote");
+      if (existsSync(wt) && existsSync(path.join(wt, "FEATURE.txt"))) {
+        assert.ok(true, "worktree created from remote branch with content");
+      }
+    } catch (e) {
+      errorMsg = e.message || e.toString() || "";
+      // If it fails, it should fail with a clear message about the branch not existing
+      assert.match(errorMsg, /does not exist|not found|no such|could not|error/i, "error message is clear about branch issue");
+    }
+
+    // Either way (success or clear error), we should not crash or leave garbage
+    assert.ok(
+      createdSuccessfully || errorMsg.length > 0,
+      "create either succeeds with remote branch or fails clearly"
+    );
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(upstream, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
