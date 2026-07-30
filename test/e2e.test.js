@@ -931,3 +931,49 @@ test("list output format with special chars in branch names (sanitization)", () 
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("clean behavior with uncommitted changes in worktree (should warn/error gracefully)", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-clean-uncommitted-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/dirty"], repo);
+    const wt = path.join(worktrees, "feature-dirty");
+    assert.ok(existsSync(wt), "worktree created");
+
+    // Add uncommitted changes to worktree
+    const testFile = path.join(wt, "uncommitted.txt");
+    writeFileSync(testFile, "uncommitted content\n");
+    git(["add", "uncommitted.txt"], wt);
+    // Stage the file but don't commit it
+
+    // clean should handle this gracefully
+    const res = spawnSync("node", [CLI, "clean"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    
+    // clean should either:
+    // 1. Succeed (clean doesn't remove worktrees, just prunes orphaned refs), or
+    // 2. Warn/error clearly without corrupting the worktree
+    const combined = res.stdout + res.stderr;
+    
+    // The worktree and its uncommitted changes should still exist
+    assert.ok(existsSync(wt), "worktree still exists after clean with uncommitted changes");
+    assert.ok(existsSync(testFile), "uncommitted file still exists after clean");
+    
+    // Exit code should be 0 (clean is a safe operation) or a clear error
+    assert.ok(res.status === 0 || res.status === 1, "clean exits cleanly (0 or 1, not crash)");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
