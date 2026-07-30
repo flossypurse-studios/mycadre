@@ -886,3 +886,48 @@ test("remove when .mycadre.json is missing (untracked state)", () => {
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("list output format with special chars in branch names (sanitization)", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-special-chars-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    
+    // Create worktrees with special chars in branch names
+    sh(["create", "feature/my-feature"], repo);
+    sh(["create", "bugfix/some-bug-fix"], repo);
+    sh(["create", "release/v1.2.3-beta"], repo);
+    
+    // Verify worktrees exist with sanitized names (slashes and hyphens)
+    assert.ok(existsSync(path.join(worktrees, "feature-my-feature")), "feature/my-feature sanitized");
+    assert.ok(existsSync(path.join(worktrees, "bugfix-some-bug-fix")), "bugfix/some-bug-fix sanitized");
+    assert.ok(existsSync(path.join(worktrees, "release-v1.2.3-beta")), "release/v1.2.3-beta sanitized");
+    
+    // List output should show all branches and their status
+    const list = sh(["list"], repo);
+    assert.match(list, /feature\/my-feature/, "list shows original branch name (feature/my-feature)");
+    assert.match(list, /bugfix\/some-bug-fix/, "list shows original branch name (bugfix/some-bug-fix)");
+    assert.match(list, /release\/v1.2.3-beta/, "list shows original branch name (release/v1.2.3-beta)");
+    
+    // All should show ok status
+    const lines = list.split("\n").filter(l => l.trim());
+    const featureLine = lines.find(l => l.includes("feature/my-feature"));
+    const bugfixLine = lines.find(l => l.includes("bugfix/some-bug-fix"));
+    const releaseLine = lines.find(l => l.includes("release/v1.2.3-beta"));
+    
+    assert.match(featureLine, /\bok\b/, "feature/my-feature shows ok status");
+    assert.match(bugfixLine, /\bok\b/, "bugfix/some-bug-fix shows ok status");
+    assert.match(releaseLine, /\bok\b/, "release/v1.2.3-beta shows ok status");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
