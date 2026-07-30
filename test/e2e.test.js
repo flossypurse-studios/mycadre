@@ -1122,3 +1122,45 @@ test("remove of fully orphaned worktree (dir deleted AND branch deleted) cleans 
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("list with multiple worktrees shows correct ordering and status", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-multi-list-"));
+  const worktrees = mkdtempSync(path.join(tmpdir(), "mycadre-worktrees-multi-"));
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    
+    // Create multiple worktrees in varying order
+    sh(["create", "zebra"], repo);
+    sh(["create", "apple"], repo);
+    sh(["create", "banana"], repo);
+    
+    // List and verify all three are present
+    const listOutput = sh(["list"], repo);
+    
+    // Check for each worktree with its path to ensure proper formatting
+    assert.match(listOutput, /^zebra\t/m, "zebra worktree with tab separator");
+    assert.match(listOutput, /^apple\t/m, "apple worktree with tab separator");
+    assert.match(listOutput, /^banana\t/m, "banana worktree with tab separator");
+    
+    // Verify status "ok" is shown for all (they should all exist and be healthy)
+    const lines = listOutput.trim().split("\n");
+    const worktreeLines = lines.filter(l => /^(zebra|apple|banana)\t/.test(l));
+    assert.equal(worktreeLines.length, 3, "exactly 3 worktree lines in output");
+    
+    // Each line should end with "ok" status
+    for (const line of worktreeLines) {
+      assert.match(line, /ok$/, `worktree line shows 'ok' status: ${line}`);
+    }
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
