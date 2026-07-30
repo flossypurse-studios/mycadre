@@ -1164,3 +1164,53 @@ test("list with multiple worktrees shows correct ordering and status", () => {
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("remove --keep-branch --force handles missing worktree dir gracefully", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-keep-force-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+    sh(["create", "feature/lost"], repo);
+    const wt = path.join(worktrees, "feature-lost");
+    assert.ok(existsSync(wt), "worktree created");
+
+    // Verify branch exists before remove
+    const branchesBefore = execFileSync("git", ["branch"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.match(branchesBefore, /feature\/lost/, "branch exists before remove");
+
+    // Simulate missing worktree dir (stale state)
+    rmSync(wt, { recursive: true, force: true });
+    assert.ok(!existsSync(wt), "worktree dir deleted");
+
+    // remove --keep-branch --force should handle missing dir and preserve branch
+    const res = spawnSync("node", [CLI, "remove", "feature/lost", "--keep-branch", "--force"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.equal(res.status, 0, "remove --keep-branch --force exits 0 with missing dir");
+    const combined = res.stdout + res.stderr;
+    assert.match(combined, /Removed 'feature\/lost'\./, "confirms removal");
+
+    // Verify branch still exists after remove --keep-branch
+    const branchesAfter = execFileSync("git", ["branch"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.match(branchesAfter, /feature\/lost/, "branch preserved with --keep-branch even with missing dir");
+    assert.doesNotMatch(sh(["list"], repo), /feature\/lost/, "entry no longer tracked");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
