@@ -1,24 +1,39 @@
 import { existsSync, mkdirSync, cpSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { git, tryGit, branchExists, repoRoot, currentBranch } from "../git.js";
+import {
+  git,
+  branchExists,
+  remotesWithBranch,
+  repoRoot,
+  currentBranch,
+} from "../git.js";
 import { loadConfig, loadState, writeState } from "../config.js";
 
 export interface CreateOptions {
   from?: string;
+  noSetup?: boolean;
 }
 
 export function runCreate(branch: string, opts: CreateOptions): void {
   if (!branch) {
-    throw new Error("Usage: mycadre create <branch> [--from <base-branch>]");
+    throw new Error("Usage: mycadre create <branch> [--from <base-branch>] [--no-setup]");
   }
   const root = repoRoot();
   const config = loadConfig(root);
   const worktreeDir = path.resolve(root, config.worktreeDir);
-  const targetPath = path.join(worktreeDir, branch.replace(/\//g, "-"));
+  const dirName = branch.replace(/\//g, "-");
+  const targetPath = path.join(worktreeDir, dirName);
 
   if (existsSync(targetPath)) {
-    throw new Error(`Target path already exists: ${targetPath}`);
+    // Issue #5: branch names are flattened (feat/login -> feat-login), so two
+    // different branch names can map to the same directory. Explain it.
+    throw new Error(
+      `Target path already exists: ${targetPath}\n` +
+        `(branch names are flattened to a directory name with '/' -> '-', so ` +
+        `'${branch}' and any branch sharing the name '${dirName}' collide here). ` +
+        `Remove the existing worktree first, or use a distinct branch name.`
+    );
   }
   mkdirSync(worktreeDir, { recursive: true });
 
@@ -27,14 +42,33 @@ export function runCreate(branch: string, opts: CreateOptions): void {
     console.log(`Using existing branch '${branch}'`);
     git(["worktree", "add", targetPath, branch], root);
   } else {
-    const base = opts.from ?? currentBranch(root);
-    if (opts.from && !branchExists(opts.from, root)) {
-      throw new Error(
-        `Base branch '${opts.from}' does not exist. Create it first, or pass an existing branch to --from.`
+    // Issue #2: before forking a NEW branch off HEAD, check for an existing
+    // remote branch of the same name and track it instead.
+    const remotes = opts.from ? [] : remotesWithBranch(branch, root);
+    if (remotes.length === 1) {
+      const remote = remotes[0];
+      console.log(
+        `Tracking existing remote branch '${remote}/${branch}'`
       );
+      git(
+        ["worktree", "add", "--track", "-b", branch, targetPath, `${remote}/${branch}`],
+        root
+      );
+    } else if (remotes.length > 1) {
+      throw new Error(
+        `Branch '${branch}' exists on multiple remotes (${remotes.join(", ")}). ` +
+          `Disambiguate by fetching and checking out the one you want, then re-run.`
+      );
+    } else {
+      const base = opts.from ?? currentBranch(root);
+      if (opts.from && !branchExists(opts.from, root)) {
+        throw new Error(
+          `Base branch '${opts.from}' does not exist. Create it first, or pass an existing branch to --from.`
+        );
+      }
+      console.log(`Creating new branch '${branch}' from '${base}'`);
+      git(["worktree", "add", "-b", branch, targetPath, base], root);
     }
-    console.log(`Creating new branch '${branch}' from '${base}'`);
-    git(["worktree", "add", "-b", branch, targetPath, base], root);
   }
 
   // Copy configured files from repo root into the new worktree.
@@ -47,8 +81,10 @@ export function runCreate(branch: string, opts: CreateOptions): void {
     }
   }
 
-  // Run setup command, if configured.
-  if (config.setup) {
+  // Run setup command, if configured (unless suppressed with --no-setup, issue #5).
+  if (config.setup && opts.noSetup) {
+    console.log(`Skipping setup (--no-setup): ${config.setup}`);
+  } else if (config.setup) {
     console.log(`Running setup: ${config.setup}`);
     execSync(config.setup, { cwd: targetPath, stdio: "inherit" });
   }
