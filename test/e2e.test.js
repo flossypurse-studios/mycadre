@@ -254,7 +254,7 @@ test("create without a branch arg errors with usage info and exits 1", () => {
   }
 });
 
-test("remove of an untracked branch warns clearly and exits 0", () => {
+test("remove of an untracked branch warns clearly and exits non-zero (issue #5)", () => {
   const repo = mkdtempSync(path.join(tmpdir(), "mycadre-rm-"));
   try {
     git(["init"], repo);
@@ -270,9 +270,10 @@ test("remove of an untracked branch warns clearly and exits 0", () => {
       cwd: repo,
       encoding: "utf8",
     });
-    assert.equal(res.status, 0, "removing an untracked branch is not fatal");
+    // A script must be able to tell "nothing was there" from "cleaned up".
+    assert.equal(res.status, 1, "removing a non-existent tracked worktree exits non-zero");
     assert.match(res.stderr, /No tracked worktree for branch 'does\/not-exist'/, "warns clearly");
-    assert.match(res.stdout, /Removed 'does\/not-exist'/, "still confirms completion");
+    assert.doesNotMatch(res.stdout, /Removed/, "does not falsely claim removal");
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -1353,6 +1354,214 @@ test("init idempotency: corrupted config recovery", () => {
 
     const list = sh(["list"], repo);
     assert.match(list, /feature\/test/, "list works after config recreation");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Regression tests for the 2026-08 bug reports (issues #1–#5)
+// ---------------------------------------------------------------------------
+
+function initRepo(prefix) {
+  const repo = mkdtempSync(path.join(tmpdir(), prefix));
+  // Force the initial branch to "main" deterministically (setting
+  // init.defaultBranch after `git init` is too late to rename it).
+  git(["init", "-b", "main"], repo);
+  git(["config", "user.email", "t@t.co"], repo);
+  git(["config", "user.name", "t"], repo);
+  git(["config", "commit.gpgsign", "false"], repo);
+  writeFileSync(path.join(repo, "README.md"), "hi\n");
+  git(["add", "README.md"], repo);
+  git(["commit", "-m", "init"], repo);
+  return repo;
+}
+
+test("issue #1: remove keeps unmerged commits by default, --force discards", () => {
+  const repo = initRepo("mycadre-i1-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    sh(["create", "scratch"], repo);
+    const wt = path.join(worktrees, "scratch");
+    // Commit unmerged work inside the worktree.
+    writeFileSync(path.join(wt, "NEWFILE.md"), "important\n");
+    git(["add", "-A"], wt);
+    git(["commit", "-m", "unmerged work"], wt);
+
+    // Default remove must REFUSE to delete the branch and exit non-zero.
+    const res = spawnSync("node", [CLI, "remove", "scratch"], { cwd: repo, encoding: "utf8" });
+    assert.equal(res.status, 1, "unsafe branch delete must exit non-zero");
+    assert.match(res.stderr, /unmerged commits/i, "explains why branch was kept");
+    const branches = execFileSync("git", ["branch", "--list", "scratch"], { cwd: repo, encoding: "utf8" });
+    assert.match(branches, /scratch/, "branch preserved so commits are recoverable");
+
+    // --force escalates to a destructive delete.
+    const forced = spawnSync("node", [CLI, "remove", "scratch", "--force"], { cwd: repo, encoding: "utf8" });
+    assert.equal(forced.status, 0, "forced removal succeeds");
+    const gone = execFileSync("git", ["branch", "--list", "scratch"], { cwd: repo, encoding: "utf8" });
+    assert.equal(gone.trim(), "", "branch deleted with --force");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #2: create tracks an existing remote branch instead of forking off HEAD", () => {
+  const origin = initRepo("mycadre-i2-origin-");
+  // Create a feature branch on the origin with a unique commit.
+  git(["checkout", "-b", "feature-x"], origin);
+  writeFileSync(path.join(origin, "FEATURE.md"), "remote work\n");
+  git(["add", "-A"], origin);
+  git(["commit", "-m", "remote-only commit"], origin);
+  git(["checkout", "main"], origin);
+
+  const clone = mkdtempSync(path.join(tmpdir(), "mycadre-i2-clone-"));
+  const worktrees = path.resolve(clone, "../mycadre-worktrees");
+  try {
+    execFileSync("git", ["clone", origin, clone], { stdio: "ignore" });
+    git(["config", "user.email", "t@t.co"], clone);
+    git(["config", "user.name", "t"], clone);
+    git(["config", "commit.gpgsign", "false"], clone);
+    sh(["init"], clone);
+
+    const out = sh(["create", "feature-x"], clone);
+    assert.match(out, /remote branch/i, "reports it tracked the remote branch");
+    const wt = path.join(worktrees, "feature-x");
+    assert.ok(existsSync(path.join(wt, "FEATURE.md")), "worktree contains the remote branch's work");
+    // Upstream must be configured, so push is fast-forward.
+    const up = execFileSync("git", ["rev-parse", "--abbrev-ref", "feature-x@{upstream}"], { cwd: wt, encoding: "utf8" });
+    assert.match(up, /origin\/feature-x/, "upstream configured to the remote branch");
+  } finally {
+    rmSync(origin, { recursive: true, force: true });
+    rmSync(clone, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #3: mycadre works from inside a worktree (main repo root resolution)", () => {
+  const repo = initRepo("mycadre-i3-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    sh(["create", "branch-a"], repo);
+    const wtA = path.join(worktrees, "branch-a");
+
+    // Run list from INSIDE the worktree — must find the main repo's state.
+    const list = sh(["list"], wtA);
+    assert.match(list, /branch-a/, "list from inside a worktree sees tracked worktrees");
+
+    // create from inside the worktree must anchor at the main repo root, not nest.
+    sh(["create", "branch-b"], wtA);
+    const wtB = path.join(worktrees, "branch-b");
+    assert.ok(existsSync(wtB), "new worktree created at main worktreeDir, not nested");
+    assert.ok(!existsSync(path.join(wtA, "mycadre-worktrees")), "not nested inside the worktree");
+    // Single state file at the main root.
+    assert.ok(!existsSync(path.join(wtA, ".mycadre-state.json")), "no split state file in the worktree");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #4: remove surfaces git's error and keeps tracking when removal fails", () => {
+  const repo = initRepo("mycadre-i4-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    sh(["create", "dirty-wt"], repo);
+    const wt = path.join(worktrees, "dirty-wt");
+    writeFileSync(path.join(wt, "WIP.md"), "wip\n"); // uncommitted, untracked
+
+    const res = spawnSync("node", [CLI, "remove", "dirty-wt"], { cwd: repo, encoding: "utf8" });
+    assert.equal(res.status, 1, "failed removal exits non-zero");
+    assert.doesNotMatch(res.stdout, /Removed/, "does not falsely report success");
+    assert.match(res.stderr, /--force/, "suggests --force for the uncommitted-changes case");
+    // Worktree still on disk AND still tracked.
+    assert.ok(existsSync(wt), "worktree not deleted");
+    const list = sh(["list"], repo);
+    assert.match(list, /dirty-wt/, "entry kept in state so clean/list still see it");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #5: init gitignores the state file", () => {
+  const repo = initRepo("mycadre-i5-ignore-");
+  try {
+    sh(["init"], repo);
+    const gi = readFileSync(path.join(repo, ".gitignore"), "utf8");
+    assert.match(gi, /\.mycadre-state\.json/, "state file gitignored");
+    // Idempotent: running init again does not duplicate the entry.
+    sh(["init"], repo);
+    const gi2 = readFileSync(path.join(repo, ".gitignore"), "utf8");
+    const count = (gi2.match(/\.mycadre-state\.json/g) || []).length;
+    assert.equal(count, 1, "no duplicate gitignore entry");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("issue #5: init default config has setup:null (docs/defaults match)", () => {
+  const repo = initRepo("mycadre-i5-default-");
+  try {
+    sh(["init"], repo);
+    const cfg = JSON.parse(readFileSync(path.join(repo, "mycadre.json"), "utf8"));
+    assert.equal(cfg.setup, null, "setup default is null, matching docs");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("issue #5: list --json emits parseable machine-readable output", () => {
+  const repo = initRepo("mycadre-i5-json-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    sh(["create", "jsonbr"], repo);
+    const out = sh(["list", "--json"], repo);
+    const parsed = JSON.parse(out);
+    assert.ok(Array.isArray(parsed), "output is a JSON array");
+    assert.equal(parsed[0].branch, "jsonbr", "branch present");
+    assert.ok(parsed[0].path && parsed[0].alive === true, "path + alive present");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #5: create --no-setup skips the setup command", () => {
+  const repo = initRepo("mycadre-i5-nosetup-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    // Configure a setup command that writes a sentinel file.
+    const cfgPath = path.join(repo, "mycadre.json");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.setup = "touch SETUP_RAN";
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+
+    const out = sh(["create", "nosetupbr", "--no-setup"], repo);
+    assert.match(out, /Skipping setup/, "reports skipping setup");
+    const wt = path.join(worktrees, "nosetupbr");
+    assert.ok(!existsSync(path.join(wt, "SETUP_RAN")), "setup command did not run");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #5: create collision error explains branch-name flattening", () => {
+  const repo = initRepo("mycadre-i5-collide-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    sh(["create", "feat/login"], repo);
+    const res = spawnSync("node", [CLI, "create", "feat-login"], { cwd: repo, encoding: "utf8" });
+    assert.equal(res.status, 1, "collision errors out");
+    assert.match(res.stderr, /flattened/i, "explains the '/' -> '-' flattening collision");
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(worktrees, { recursive: true, force: true });
