@@ -10,23 +10,30 @@ const HELP = `mycadre — git worktrees that are ready to work
 
 Usage:
   mycadre init                       Create a mycadre.json config in this repo
-  mycadre create <branch> [--from <base>]
+  mycadre create <branch> [--from <base>] [--no-setup]
                                       Create a worktree for <branch>, copy
                                       configured files (e.g. .env) into it,
-                                      and run the configured setup command
-  mycadre list                       List tracked worktrees
+                                      and run the configured setup command.
+                                      Tracks an existing remote branch of the
+                                      same name if there is one. --no-setup
+                                      skips the setup command.
+  mycadre list [--json]              List tracked worktrees (--json for scripts)
   mycadre remove <branch> [--keep-branch] [--force]
-                                      Remove a worktree and its branch
+                                      Remove a worktree and its branch. The
+                                      branch is deleted with a SAFE delete;
+                                      unmerged commits are kept unless --force.
   mycadre clean                      Prune worktrees and drop stale tracking entries
   mycadre --version                  Print the installed version
   mycadre --help                     Show this help
 
-Config (mycadre.json at repo root):
+Config (mycadre.json at repo root; these are the defaults \`init\` writes):
   {
     "worktreeDir": "../mycadre-worktrees",
     "copy": [".env", ".env.local"],
-    "setup": "npm install"
+    "setup": null
   }
+  "setup" is null by default (no command runs). Set it to e.g. "npm install"
+  to run automatically in each new worktree.
 `;
 
 function getVersion(): string {
@@ -69,11 +76,14 @@ function main(): void {
         runInit();
         break;
       case "create":
-        runCreate(positional[0], { from: flags.from as string | undefined });
+        runCreate(positional[0], {
+          from: flags.from as string | undefined,
+          noSetup: Boolean(flags["no-setup"]),
+        });
         break;
       case "list":
       case "ls":
-        runList();
+        runList({ json: Boolean(flags.json) });
         break;
       case "remove":
       case "rm":
