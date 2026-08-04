@@ -38,6 +38,9 @@ export function runCreate(branch: string, opts: CreateOptions): void {
   mkdirSync(worktreeDir, { recursive: true });
 
   const exists = branchExists(branch, root);
+  // Track whether THIS run created the branch, so rollback only deletes a
+  // branch we introduced (never a pre-existing one). Issue #6.
+  let branchCreatedThisRun = false;
   if (exists) {
     console.log(`Using existing branch '${branch}'`);
     git(["worktree", "add", targetPath, branch], root);
@@ -54,6 +57,7 @@ export function runCreate(branch: string, opts: CreateOptions): void {
         ["worktree", "add", "--track", "-b", branch, targetPath, `${remote}/${branch}`],
         root
       );
+      branchCreatedThisRun = true;
     } else if (remotes.length > 1) {
       throw new Error(
         `Branch '${branch}' exists on multiple remotes (${remotes.join(", ")}). ` +
@@ -68,25 +72,46 @@ export function runCreate(branch: string, opts: CreateOptions): void {
       }
       console.log(`Creating new branch '${branch}' from '${base}'`);
       git(["worktree", "add", "-b", branch, targetPath, base], root);
+      branchCreatedThisRun = true;
     }
   }
 
-  // Copy configured files from repo root into the new worktree.
-  for (const rel of config.copy) {
-    const src = path.join(root, rel);
-    const dest = path.join(targetPath, rel);
-    if (existsSync(src)) {
-      cpSync(src, dest, { recursive: true });
-      console.log(`Copied ${rel}`);
+  // From here on the worktree (and possibly a new branch) exist on disk. If
+  // copy or setup fails we must roll the whole thing back, otherwise we leave
+  // an untracked zombie worktree that list/clean/prune can't see. Issue #6.
+  try {
+    // Copy configured files from repo root into the new worktree.
+    for (const rel of config.copy) {
+      const src = path.join(root, rel);
+      const dest = path.join(targetPath, rel);
+      if (existsSync(src)) {
+        cpSync(src, dest, { recursive: true });
+        console.log(`Copied ${rel}`);
+      }
     }
-  }
 
-  // Run setup command, if configured (unless suppressed with --no-setup, issue #5).
-  if (config.setup && opts.noSetup) {
-    console.log(`Skipping setup (--no-setup): ${config.setup}`);
-  } else if (config.setup) {
-    console.log(`Running setup: ${config.setup}`);
-    execSync(config.setup, { cwd: targetPath, stdio: "inherit" });
+    // Run setup command, if configured (unless suppressed with --no-setup, issue #5).
+    if (config.setup && opts.noSetup) {
+      console.log(`Skipping setup (--no-setup): ${config.setup}`);
+    } else if (config.setup) {
+      console.log(`Running setup: ${config.setup}`);
+      execSync(config.setup, { cwd: targetPath, stdio: "inherit" });
+    }
+  } catch (err) {
+    console.error(`\nSetup failed; rolling back worktree at ${targetPath}`);
+    try {
+      git(["worktree", "remove", "--force", targetPath], root);
+    } catch {
+      /* best-effort cleanup */
+    }
+    if (branchCreatedThisRun) {
+      try {
+        git(["branch", "-D", branch], root);
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
+    throw err;
   }
 
   const state = loadState(root);

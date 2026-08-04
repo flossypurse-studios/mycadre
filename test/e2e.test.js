@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.resolve(__dirname, "../dist/cli.js");
+const PKG_VERSION = JSON.parse(
+  readFileSync(path.resolve(__dirname, "../package.json"), "utf8")
+).version;
 
 function sh(args, cwd) {
   return execFileSync("node", [CLI, ...args], { cwd, encoding: "utf8" });
@@ -188,7 +191,7 @@ test("create --from with a non-existent base branch errors clearly and exits 1",
 
 test("--version prints the package version", () => {
   const out = sh(["--version"]);
-  assert.match(out, /0\.1\.0/, "--version outputs version");
+  assert.equal(out.trim(), PKG_VERSION, "--version outputs version");
   assert.equal(sh(["-v"]).trim(), sh(["version"]).trim(), "-v and version match");
 });
 
@@ -523,6 +526,99 @@ test("create runs the configured setup command inside the new worktree", () => {
   }
 });
 
+test("create rolls back the worktree and branch when setup fails (issue #6)", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-rollback-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    // Configure a setup command that fails.
+    const cfgPath = path.join(repo, "mycadre.json");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.setup = "exit 99";
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+    const res = spawnSync("node", [CLI, "create", "feature/broken"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.notEqual(res.status, 0, "create exits non-zero when setup fails");
+    assert.match(res.stderr, /rolling back/i, "announces rollback");
+
+    const wt = path.join(worktrees, "feature-broken");
+    assert.ok(!existsSync(wt), "worktree directory removed on rollback");
+
+    // Branch created this run must be deleted.
+    const branches = execFileSync("git", ["branch", "--list", "feature/broken"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.equal(branches.trim(), "", "new branch deleted on rollback");
+
+    // git's own worktree tracking must be clean (no zombie entry).
+    const wtList = execFileSync("git", ["worktree", "list"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.doesNotMatch(wtList, /feature-broken/, "no zombie worktree tracked by git");
+
+    // A subsequent create with a working setup must succeed (path/branch free).
+    cfg.setup = "echo ok > ok.txt";
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+    sh(["create", "feature/broken"], repo);
+    assert.ok(existsSync(wt), "worktree recreatable after rollback");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("create preserves a pre-existing branch when setup fails (issue #6)", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-rollback-keep-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+    // Pre-create the branch so it exists before `create` runs.
+    git(["branch", "keepme"], repo);
+
+    sh(["init"], repo);
+    const cfgPath = path.join(repo, "mycadre.json");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.setup = "exit 99";
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+    const res = spawnSync("node", [CLI, "create", "keepme"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.notEqual(res.status, 0, "create exits non-zero when setup fails");
+
+    assert.ok(!existsSync(path.join(worktrees, "keepme")), "worktree removed");
+    const branches = execFileSync("git", ["branch", "--list", "keepme"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.match(branches, /keepme/, "pre-existing branch is preserved");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
 test("create errors when target path already exists", () => {
   const repo = mkdtempSync(path.join(tmpdir(), "mycadre-test-"));
   const worktrees = path.resolve(repo, "../mycadre-worktrees");
@@ -827,7 +923,7 @@ test("--version works outside a git repo", () => {
   const outside = mkdtempSync(path.join(tmpdir(), "mycadre-nogit-version-"));
   try {
     const out = execFileSync("node", [CLI, "--version"], { cwd: outside, encoding: "utf8" });
-    assert.match(out, /0\.1\.0/, "--version outputs version outside git repo");
+    assert.equal(out.trim(), PKG_VERSION, "--version outputs version outside git repo");
   } finally {
     rmSync(outside, { recursive: true, force: true });
   }
