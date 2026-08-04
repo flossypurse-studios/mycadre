@@ -9,6 +9,7 @@
 <meta property="og:description" content="Create a branch's worktree with your .env files copied and setup run — all tracked and cleaned up." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://mycadre.dev" />
+<link rel="canonical" href="https://mycadre.dev/" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236d5efc'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='monospace' font-weight='bold'%3Em%3C/text%3E%3C/svg%3E" />
 <style>
 :root{
@@ -90,9 +91,9 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
       <a class="btn ghost" href="https://github.com/flossypurse-studios/mycadre">View source</a>
     </div>
     <div class="install">
-      <pre><span class="cmt"># npm package coming soon — install from source:</span>
-<span class="prompt">$</span> git clone https://github.com/flossypurse-studios/mycadre.git
-<span class="prompt">$</span> cd mycadre && npm install && npm run build && npm link</pre>
+      <pre><span class="prompt">$</span> npm install -g mycadre
+<span class="cmt"># then, in any git repo:</span>
+<span class="prompt">$</span> mycadre create my-feature</pre>
     </div>
   </section>
 

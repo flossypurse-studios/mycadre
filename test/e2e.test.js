@@ -603,7 +603,7 @@ test("create with existing branch reuses it and prints Using existing branch", (
   const repo = mkdtempSync(path.join(tmpdir(), "mycadre-test-"));
   const worktrees = path.resolve(repo, "../mycadre-worktrees");
   try {
-    git(["init"], repo);
+    git(["init", "-b", "master"], repo);
     git(["config", "user.email", "t@t.co"], repo);
     git(["config", "user.name", "t"], repo);
     git(["config", "commit.gpgsign", "false"], repo);
@@ -988,7 +988,7 @@ test("create --from with a remote-only branch (not yet checked out locally)", ()
     git(["init", "--bare"], upstream);
 
     // Set up local repo and push a branch upstream
-    git(["init"], repo);
+    git(["init", "-b", "master"], repo);
     git(["config", "user.email", "t@t.co"], repo);
     git(["config", "user.name", "t"], repo);
     git(["config", "commit.gpgsign", "false"], repo);
