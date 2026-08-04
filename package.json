@@ -1,6 +1,6 @@
 {
   "name": "mycadre",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Git worktrees that are ready to work: create a branch's worktree with your env files copied and setup run, all tracked and cleaned up.",
   "keywords": [
     "git",
