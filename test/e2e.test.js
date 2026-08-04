@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync, spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -1715,6 +1715,53 @@ test("issue #8: subcommand --help exits 0 and prints usage to stdout", () => {
       assert.match(res.stdout, /Usage: mycadre/, `${cmd} --help prints usage to stdout`);
       assert.equal(res.stderr, "", `${cmd} --help writes nothing to stderr`);
     }
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+function spawnAsync(args, cwd) {
+  return new Promise((resolve) => {
+    const child = spawn("node", [CLI, ...args], { cwd, encoding: "utf8" });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+test("issue #9: concurrent create calls don't clobber each other's state entries", async () => {
+  const repo = initRepo("mycadre-i9-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    // Fire two `create` invocations at (almost) the same instant against the
+    // same repo. Before the fix, both read .mycadre-state.json before either
+    // wrote it back, so whichever wrote last silently discarded the other's
+    // new worktree entry. With the O_EXCL lock in config.ts, both should
+    // serialize and both entries should survive.
+    const [a, b] = await Promise.all([
+      spawnAsync(["create", "race-a"], repo),
+      spawnAsync(["create", "race-b"], repo),
+    ]);
+    assert.equal(a.status, 0, `race-a create should succeed: ${a.stderr}`);
+    assert.equal(b.status, 0, `race-b create should succeed: ${b.stderr}`);
+
+    const state = JSON.parse(
+      readFileSync(path.join(repo, ".mycadre-state.json"), "utf8")
+    );
+    const branches = state.worktrees.map((w) => w.branch).sort();
+    assert.deepEqual(
+      branches,
+      ["race-a", "race-b"],
+      "both concurrently-created worktrees are tracked, not just one"
+    );
+    assert.ok(existsSync(path.join(worktrees, "race-a")), "race-a worktree exists on disk");
+    assert.ok(existsSync(path.join(worktrees, "race-b")), "race-b worktree exists on disk");
+    // No leftover lock file after both operations finish.
+    assert.ok(!existsSync(path.join(repo, ".mycadre-state.lock")), "lock file cleaned up");
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(worktrees, { recursive: true, force: true });

@@ -8,7 +8,7 @@ import {
   repoRoot,
   currentBranch,
 } from "../git.js";
-import { loadConfig, loadState, writeState } from "../config.js";
+import { loadConfig, updateState } from "../config.js";
 
 export interface CreateOptions {
   from?: string;
@@ -122,14 +122,14 @@ export function runCreate(branch: string, opts: CreateOptions): void {
     throw err;
   }
 
-  const state = loadState(root);
-  state.worktrees = state.worktrees.filter((w) => w.branch !== branch);
-  state.worktrees.push({
-    branch,
-    path: targetPath,
-    createdAt: new Date().toISOString(),
+  updateState(root, (state) => {
+    state.worktrees = state.worktrees.filter((w) => w.branch !== branch);
+    state.worktrees.push({
+      branch,
+      path: targetPath,
+      createdAt: new Date().toISOString(),
+    });
   });
-  writeState(root, state);
 
   if (opts.json) {
     console.log(JSON.stringify({ branch, path: targetPath }));
