@@ -1663,3 +1663,60 @@ test("issue #5: create collision error explains branch-name flattening", () => {
     rmSync(worktrees, { recursive: true, force: true });
   }
 });
+
+test("issue #7: unknown flag on create errors instead of becoming the branch name", () => {
+  const repo = initRepo("mycadre-i7-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    const res = spawnSync("node", [CLI, "create", "myfeature", "--bogus"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.equal(res.status, 1, "unknown flag exits 1");
+    assert.match(res.stderr, /unknown option: --bogus/, "names the offending flag");
+    // The bogus flag must NOT have created a branch/worktree.
+    assert.ok(!existsSync(path.join(worktrees, "--bogus")), "no --bogus worktree");
+    assert.ok(!existsSync(path.join(worktrees, "myfeature")), "no worktree created at all");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #7: create --json emits {branch,path} on stdout and suppresses logs", () => {
+  const repo = initRepo("mycadre-i7-json-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    const res = spawnSync("node", [CLI, "create", "jsonbr", "--json"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    assert.equal(res.status, 0, "exits 0");
+    const parsed = JSON.parse(res.stdout.trim());
+    assert.equal(parsed.branch, "jsonbr", "reports branch");
+    assert.ok(parsed.path.endsWith(path.join("mycadre-worktrees", "jsonbr")), "reports path");
+    assert.doesNotMatch(res.stdout, /Ready:|Creating new branch/, "human logs kept off stdout");
+    assert.ok(existsSync(path.join(worktrees, "jsonbr")), "worktree actually created");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #8: subcommand --help exits 0 and prints usage to stdout", () => {
+  const repo = initRepo("mycadre-i8-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    for (const cmd of ["create", "remove", "list", "init", "clean"]) {
+      const res = spawnSync("node", [CLI, cmd, "--help"], { cwd: repo, encoding: "utf8" });
+      assert.equal(res.status, 0, `${cmd} --help exits 0`);
+      assert.match(res.stdout, /Usage: mycadre/, `${cmd} --help prints usage to stdout`);
+      assert.equal(res.stderr, "", `${cmd} --help writes nothing to stderr`);
+    }
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});

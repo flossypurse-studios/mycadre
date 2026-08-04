@@ -13,12 +13,19 @@ import { loadConfig, loadState, writeState } from "../config.js";
 export interface CreateOptions {
   from?: string;
   noSetup?: boolean;
+  json?: boolean;
 }
 
 export function runCreate(branch: string, opts: CreateOptions): void {
   if (!branch) {
-    throw new Error("Usage: mycadre create <branch> [--from <base-branch>] [--no-setup]");
+    throw new Error("Usage: mycadre create <branch> [--from <base-branch>] [--no-setup] [--json]");
   }
+  // In --json mode stdout is reserved for the final JSON object, so progress
+  // messages go to stderr and any setup command's output is redirected there
+  // too (issue #7). Otherwise log normally to stdout.
+  const log = opts.json
+    ? (msg: string) => console.error(msg)
+    : (msg: string) => console.log(msg);
   const root = repoRoot();
   const config = loadConfig(root);
   const worktreeDir = path.resolve(root, config.worktreeDir);
@@ -42,7 +49,7 @@ export function runCreate(branch: string, opts: CreateOptions): void {
   // branch we introduced (never a pre-existing one). Issue #6.
   let branchCreatedThisRun = false;
   if (exists) {
-    console.log(`Using existing branch '${branch}'`);
+    log(`Using existing branch '${branch}'`);
     git(["worktree", "add", targetPath, branch], root);
   } else {
     // Issue #2: before forking a NEW branch off HEAD, check for an existing
@@ -50,9 +57,7 @@ export function runCreate(branch: string, opts: CreateOptions): void {
     const remotes = opts.from ? [] : remotesWithBranch(branch, root);
     if (remotes.length === 1) {
       const remote = remotes[0];
-      console.log(
-        `Tracking existing remote branch '${remote}/${branch}'`
-      );
+      log(`Tracking existing remote branch '${remote}/${branch}'`);
       git(
         ["worktree", "add", "--track", "-b", branch, targetPath, `${remote}/${branch}`],
         root
@@ -70,7 +75,7 @@ export function runCreate(branch: string, opts: CreateOptions): void {
           `Base branch '${opts.from}' does not exist. Create it first, or pass an existing branch to --from.`
         );
       }
-      console.log(`Creating new branch '${branch}' from '${base}'`);
+      log(`Creating new branch '${branch}' from '${base}'`);
       git(["worktree", "add", "-b", branch, targetPath, base], root);
       branchCreatedThisRun = true;
     }
@@ -86,16 +91,19 @@ export function runCreate(branch: string, opts: CreateOptions): void {
       const dest = path.join(targetPath, rel);
       if (existsSync(src)) {
         cpSync(src, dest, { recursive: true });
-        console.log(`Copied ${rel}`);
+        log(`Copied ${rel}`);
       }
     }
 
     // Run setup command, if configured (unless suppressed with --no-setup, issue #5).
     if (config.setup && opts.noSetup) {
-      console.log(`Skipping setup (--no-setup): ${config.setup}`);
+      log(`Skipping setup (--no-setup): ${config.setup}`);
     } else if (config.setup) {
-      console.log(`Running setup: ${config.setup}`);
-      execSync(config.setup, { cwd: targetPath, stdio: "inherit" });
+      log(`Running setup: ${config.setup}`);
+      execSync(config.setup, {
+        cwd: targetPath,
+        stdio: opts.json ? ["ignore", 2, 2] : "inherit",
+      });
     }
   } catch (err) {
     console.error(`\nSetup failed; rolling back worktree at ${targetPath}`);
@@ -122,6 +130,11 @@ export function runCreate(branch: string, opts: CreateOptions): void {
     createdAt: new Date().toISOString(),
   });
   writeState(root, state);
+
+  if (opts.json) {
+    console.log(JSON.stringify({ branch, path: targetPath }));
+    return;
+  }
 
   console.log(`\nReady: ${targetPath}`);
   console.log(`  cd ${path.relative(process.cwd(), targetPath) || "."}`);
