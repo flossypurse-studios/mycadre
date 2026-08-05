@@ -1,11 +1,20 @@
 import { existsSync, readFileSync, writeFileSync, openSync, closeSync, unlinkSync } from "node:fs";
 import path from "node:path";
 
+/**
+ * A copy entry is either a plain path string (copied into the new worktree
+ * with cpSync, the original behavior), or an object requesting symlink mode
+ * `{path, mode: "symlink"}`, which creates a symlink in the worktree pointing
+ * back at the file/dir in the main repo root instead of duplicating it (issue
+ * #10) — useful for large or shared things like node_modules or .env.
+ */
+export type CopyEntry = string | { path: string; mode: "symlink" };
+
 export interface MycadreConfig {
   /** Directory (relative to repo root) where worktrees are created. */
   worktreeDir: string;
-  /** Glob-free list of files/dirs to copy from the repo root into each new worktree (e.g. env files). */
-  copy: string[];
+  /** Glob-free list of files/dirs to copy (or symlink) from the repo root into each new worktree (e.g. env files). */
+  copy: CopyEntry[];
   /** Shell command to run inside the new worktree after creation (e.g. "npm install"). */
   setup: string | null;
 }

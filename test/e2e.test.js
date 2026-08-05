@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync, lstatSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -689,6 +689,45 @@ test("create copies configured files and skips missing ones without crashing", (
     assert.ok(existsSync(path.join(wt, ".env")), "present file copied into worktree");
     assert.ok(!existsSync(path.join(wt, "missing.txt")), "missing file skipped gracefully");
     assert.match(readFileSync(path.join(wt, ".env"), "utf8"), /SECRET=1/, "copied content matches");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #10: symlink-mode copy entry creates a real symlink, not a copy", () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-symlink-"));
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "t@t.co"], repo);
+    git(["config", "user.name", "t"], repo);
+    git(["config", "commit.gpgsign", "false"], repo);
+    writeFileSync(path.join(repo, "README.md"), "hi\n");
+    git(["add", "README.md"], repo);
+    git(["commit", "-m", "init"], repo);
+
+    sh(["init"], repo);
+
+    const cfgPath = path.join(repo, "mycadre.json");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.copy = [{ path: ".envlink", mode: "symlink" }];
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+    writeFileSync(path.join(repo, ".envlink"), "SECRET=symlinked\n");
+
+    const out = sh(["create", "feature/symlink"], repo);
+    assert.match(out, /Symlinked \.envlink/, "reports symlinking the entry");
+
+    const wt = path.join(worktrees, "feature-symlink");
+    const linkPath = path.join(wt, ".envlink");
+    const st = lstatSync(linkPath);
+    assert.ok(st.isSymbolicLink(), "created path is a real symlink, not a plain copy");
+    assert.equal(
+      realpathSync(linkPath),
+      realpathSync(path.join(repo, ".envlink")),
+      "symlink resolves to the file in the main repo root"
+    );
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(worktrees, { recursive: true, force: true });

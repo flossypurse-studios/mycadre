@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, cpSync } from "node:fs";
+import { existsSync, mkdirSync, cpSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import {
@@ -85,11 +85,21 @@ export function runCreate(branch: string, opts: CreateOptions): void {
   // copy or setup fails we must roll the whole thing back, otherwise we leave
   // an untracked zombie worktree that list/clean/prune can't see. Issue #6.
   try {
-    // Copy configured files from repo root into the new worktree.
-    for (const rel of config.copy) {
+    // Copy (or symlink) configured files from repo root into the new worktree.
+    for (const entry of config.copy) {
+      const isSymlink = typeof entry === "object" && entry.mode === "symlink";
+      const rel = typeof entry === "string" ? entry : entry.path;
       const src = path.join(root, rel);
       const dest = path.join(targetPath, rel);
-      if (existsSync(src)) {
+      if (!existsSync(src)) continue;
+      if (isSymlink) {
+        // Relative symlink target so the worktree stays portable if the repo
+        // (and its worktrees) are moved together to a new location.
+        mkdirSync(path.dirname(dest), { recursive: true });
+        const relativeTarget = path.relative(path.dirname(dest), src);
+        symlinkSync(relativeTarget, dest);
+        log(`Symlinked ${rel}`);
+      } else {
         cpSync(src, dest, { recursive: true });
         log(`Copied ${rel}`);
       }

@@ -68,7 +68,21 @@ mycadre clean                # prune worktrees git already dropped
 
 - **`worktreeDir`** — where worktrees are created, relative to the repo root.
 - **`copy`** — files/directories copied from the repo root into each new worktree
-  (typically gitignored local config). Missing entries are skipped silently.
+  (typically gitignored local config). Missing entries are skipped silently. Each
+  entry can be:
+  - a plain string (`".env"`) — copied into the worktree, as above; or
+  - an object `{"path": "...", "mode": "symlink"}` — a symlink is created in the
+    worktree pointing back at the file/dir in the main repo root instead of
+    duplicating it. Useful for large or shared things you don't want copies of,
+    like `node_modules` or a big `.env` you always want in sync:
+    ```json
+    "copy": [
+      { "path": "node_modules", "mode": "symlink" },
+      { "path": ".env", "mode": "symlink" }
+    ]
+    ```
+    The symlink target is relative, so the link keeps working if you move the
+    repo (and its worktrees) to a new location together.
 - **`setup`** — a shell command run inside the new worktree after creation, or
   `null` to skip.
 
