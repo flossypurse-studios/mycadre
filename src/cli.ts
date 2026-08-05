@@ -5,6 +5,7 @@ import { runCreate } from "./commands/create.js";
 import { runList } from "./commands/list.js";
 import { runRemove } from "./commands/remove.js";
 import { runClean } from "./commands/clean.js";
+import { runDoctor } from "./commands/doctor.js";
 
 const HELP = `mycadre — git worktrees that are ready to work
 
@@ -24,6 +25,8 @@ Usage:
                                       branch is deleted with a SAFE delete;
                                       unmerged commits are kept unless --force.
   mycadre clean                      Prune worktrees and drop stale tracking entries
+  mycadre doctor [--json]            Check git, config, worktreeDir, and tracked
+                                      worktrees for common problems
   mycadre --version                  Print the installed version
   mycadre --help                     Show this help
 
@@ -64,6 +67,11 @@ const SUBCOMMAND_USAGE: Record<string, string> = {
   unmerged commits are kept unless --force. --keep-branch removes only the worktree.`,
   clean: `Usage: mycadre clean
   Prune worktrees and drop stale tracking entries.`,
+  doctor: `Usage: mycadre doctor [--json]
+  Check that git is installed, this is a git repo, mycadre.json and
+  .mycadre-state.json parse, worktreeDir is usable, and tracked worktrees
+  are still present on disk. Exits 1 if any check fails. --json emits
+  machine-readable output.`,
 };
 
 // Flags each subcommand accepts (bare names, without the leading --). "help" is
@@ -77,6 +85,7 @@ const KNOWN_FLAGS: Record<string, string[]> = {
   remove: ["keep-branch", "force", "help"],
   rm: ["keep-branch", "force", "help"],
   clean: ["help"],
+  doctor: ["json", "help"],
 };
 
 // Map command aliases to the canonical name used for usage lookup.
@@ -153,6 +162,9 @@ function main(): void {
         break;
       case "clean":
         runClean();
+        break;
+      case "doctor":
+        runDoctor({ json: Boolean(flags.json) });
         break;
       case "--version":
       case "-v":

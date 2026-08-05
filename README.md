@@ -51,6 +51,7 @@ mycadre clean                # prune worktrees git already dropped
 | `mycadre list` | List tracked worktrees and flag any that have gone missing. |
 | `mycadre remove <branch> [--keep-branch] [--force]` | Remove the worktree and (unless `--keep-branch`) delete the branch. |
 | `mycadre clean` | Prune git worktrees and drop stale tracking entries. |
+| `mycadre doctor [--json]` | Check that git, your repo, `mycadre.json`, `worktreeDir`, and tracked worktrees are all in a healthy state. Exits 1 if anything's wrong. |
 | `mycadre --version` | Print the installed version (also `-v`). |
 | `mycadre --help` | Show usage help (also `-h`). |
 

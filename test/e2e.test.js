@@ -1748,7 +1748,7 @@ test("issue #8: subcommand --help exits 0 and prints usage to stdout", () => {
   const repo = initRepo("mycadre-i8-");
   const worktrees = path.resolve(repo, "../mycadre-worktrees");
   try {
-    for (const cmd of ["create", "remove", "list", "init", "clean"]) {
+    for (const cmd of ["create", "remove", "list", "init", "clean", "doctor"]) {
       const res = spawnSync("node", [CLI, cmd, "--help"], { cwd: repo, encoding: "utf8" });
       assert.equal(res.status, 0, `${cmd} --help exits 0`);
       assert.match(res.stdout, /Usage: mycadre/, `${cmd} --help prints usage to stdout`);
@@ -1805,4 +1805,67 @@ test("issue #9: concurrent create calls don't clobber each other's state entries
     rmSync(repo, { recursive: true, force: true });
     rmSync(worktrees, { recursive: true, force: true });
   }
+});
+
+test("doctor: reports missing config and exits 1 before init", () => {
+  const repo = initRepo("mycadre-doctor-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    const res = spawnSync("node", [CLI, "doctor"], { cwd: repo, encoding: "utf8" });
+    assert.equal(res.status, 1, "exits 1 when mycadre.json is missing");
+    assert.match(res.stdout, /✗ config: no mycadre\.json found/);
+    assert.match(res.stdout, /✓ git:/);
+    assert.match(res.stdout, /✓ repo:/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("doctor: all checks pass after init, and --json is parseable", () => {
+  const repo = initRepo("mycadre-doctor-ok-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    const res = spawnSync("node", [CLI, "doctor"], { cwd: repo, encoding: "utf8" });
+    assert.equal(res.status, 0, `doctor should pass on a freshly-init'd repo: ${res.stdout}`);
+    assert.match(res.stdout, /All checks passed\./);
+
+    const jsonRes = spawnSync("node", [CLI, "doctor", "--json"], { cwd: repo, encoding: "utf8" });
+    assert.equal(jsonRes.status, 0);
+    const parsed = JSON.parse(jsonRes.stdout);
+    assert.equal(parsed.ok, true);
+    assert.ok(Array.isArray(parsed.checks) && parsed.checks.length > 0);
+    assert.ok(parsed.checks.every((c) => c.ok === true), "every check reports ok:true");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("doctor: flags a tracked worktree that's gone missing from disk", () => {
+  const repo = initRepo("mycadre-doctor-missing-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  try {
+    sh(["init"], repo);
+    sh(["create", "feature/gone"], repo);
+    // Delete the worktree directory out from under mycadre (not via `mycadre
+    // remove`), simulating a manual rm -rf, so the state entry goes stale.
+    rmSync(path.join(worktrees, "feature-gone"), { recursive: true, force: true });
+
+    const res = spawnSync("node", [CLI, "doctor"], { cwd: repo, encoding: "utf8" });
+    assert.equal(res.status, 1);
+    assert.match(res.stdout, /✗ tracked worktrees:.*missing on disk.*mycadre clean/);
+    assert.match(res.stdout, /feature\/gone/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("doctor --help exits 0 and prints usage to stdout", () => {
+  const res = spawnSync("node", [CLI, "doctor", "--help"], { encoding: "utf8" });
+  assert.equal(res.status, 0);
+  assert.match(res.stdout, /Usage: mycadre doctor/);
+  assert.equal(res.stderr, "");
 });

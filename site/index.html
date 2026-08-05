@@ -121,7 +121,7 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
 
   <section id="commands">
     <h2>Commands</h2>
-    <p class="sub">Five commands, that's the whole surface.</p>
+    <p class="sub">Six commands, that's the whole surface.</p>
     <table>
       <thead><tr><th>Command</th><th>What it does</th></tr></thead>
       <tbody>
@@ -130,6 +130,7 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
         <tr><td><code>mycadre list</code></td><td>List tracked worktrees and flag any that have gone missing.</td></tr>
         <tr><td><code>mycadre remove &lt;branch&gt; [--keep-branch] [--force]</code></td><td>Remove the worktree and (unless <code>--keep-branch</code>) delete the branch.</td></tr>
         <tr><td><code>mycadre clean</code></td><td>Prune git worktrees and drop stale tracking entries.</td></tr>
+        <tr><td><code>mycadre doctor [--json]</code></td><td>Check that git, your repo, <code>mycadre.json</code>, <code>worktreeDir</code>, and tracked worktrees are all in a healthy state. Exits 1 if anything's wrong.</td></tr>
       </tbody>
     </table>
   </section>
