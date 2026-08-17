@@ -48,7 +48,7 @@ mycadre clean                # prune worktrees git already dropped
 | --- | --- |
 | `mycadre init` | Create a `mycadre.json` config at the repo root. |
 | `mycadre create <branch> [--from <base>] [--no-setup] [--json]` | Create a worktree for `<branch>` (new branch off `<base>`, or the current branch, unless it already exists), copy configured files into it, and run the setup command. `--no-setup` skips the setup command; `--json` prints `{"branch","path"}` to stdout (progress logs go to stderr) for scripting. |
-| `mycadre list` | List tracked worktrees and flag any that have gone missing. |
+| `mycadre list [--json]` | List tracked worktrees and flag any that have gone missing. `--json` prints machine-readable output for scripts. |
 | `mycadre remove <branch> [--keep-branch] [--force]` | Remove the worktree and (unless `--keep-branch`) delete the branch. |
 | `mycadre clean` | Prune git worktrees and drop stale tracking entries. |
 | `mycadre doctor [--json]` | Check that git, your repo, `mycadre.json`, `worktreeDir`, and tracked worktrees are all in a healthy state. Exits 1 if anything's wrong. |
