@@ -10,72 +10,399 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://mycadre.dev" />
 <link rel="canonical" href="https://mycadre.dev/" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236d5efc'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='monospace' font-weight='bold'%3Em%3C/text%3E%3C/svg%3E" />
+<meta name="theme-color" content="#fbf7f0">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#0c0d12; --panel:#14161f; --panel2:#1b1e2b; --border:#262a3a;
-  --fg:#e7e9f0; --muted:#9aa0b4; --accent:#7d6ffb; --accent2:#4fd1c5;
-  --code:#0a0b10;
+/* ─────────────────────────────────────────────────────────────────────────────
+   FlossyPurse Studios — "Paper" theme, tool-site edition.
+
+   Derived from flossypurse.studio/public/styles.css. Same three type roles, same
+   paper/ink ground, same discipline: the loudness lives in colour and display
+   type; grid, spacing and body copy stay quiet.
+
+     Bricolage Grotesque  display  — headlines, wordmark, numbers
+     Inter                body     — everything you actually read
+     JetBrains Mono       receipts — commands, output, labels, counts
+
+   Colour never carries body text. Each tool owns ONE hue from the studio's five.
+   --accent is the hue at full chroma (marks, rails, rules, large display only).
+   --accent-ink is that hue darkened to clear 4.5:1 on both paper and white, and
+   is the only coloured value allowed to carry small text or a link.
+
+   Every tool site sets its own --accent block. Nothing else in this file changes
+   between sites — that is what makes them read as one studio.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* type */
+  --font-display: "Bricolage Grotesque", "Archivo Black", ui-sans-serif, system-ui, sans-serif;
+  --font-body: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --display-weight: 800;
+  --display-tracking: -0.045em;
+
+  --h1: 2.6rem;
+  --h2: 1.75rem;
+  --h3: 1.25rem;
+  --lead: 1.08rem;
+  --body: 1rem;
+  --small: 0.9rem;
+  --micro: 0.78rem;
+
+  /* surfaces and ink */
+  --bg: #fbf7f0;
+  --surface: #ffffff;
+  --surface-2: #f6f1e7;
+  --line: #e7e0d2;
+  --line-soft: #efe9dd;
+  --rule: #16181d;
+  --fg: #16181d;
+  --fg-dim: #4a4f58;
+  --fg-mute: #7c8189;
+
+  /* the studio five — always available, the mark uses two of them */
+  --hero: #ff4d3d;
+  --marigold: #ffb302;
+  --teal: #0fa3a3;
+  --ultramarine: #2b4fe0;
+  --magenta: #e5399a;
+
+  --warn: #b07600;
+  --ok: #0b7d5e;
+  --bad: #c0362b;
+
+  /* terminal — the one place the page goes dark on purpose */
+  --term-bg: #16181d;
+  --term-fg: #e8e9e5;
+  --term-mute: #8b9098;
+  --term-ok: #63c98a;
+  --term-bad: #ff8b7e;
+  --term-key: #8fb2ff;
+  --term-warn: #ffc75c;
+
+  /* space */
+  --gap: 1rem;
+  --section-y: 4rem;
+  --measure: 36rem;
+  --wide: 62rem;
 }
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{
-  margin:0;background:var(--bg);color:var(--fg);
-  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  -webkit-font-smoothing:antialiased;
+
+@media (min-width: 44em) {
+  :root { --h1: 3.3rem; --h2: 2.1rem; --lead: 1.15rem; --section-y: 4.5rem; }
 }
-a{color:var(--accent);text-decoration:none}
-a:hover{text-decoration:underline}
-code,pre{font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.wrap{max-width:860px;margin:0 auto;padding:0 24px}
-header{border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(12,13,18,.85);backdrop-filter:blur(10px);z-index:10}
-.nav{display:flex;align-items:center;justify-content:space-between;height:60px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
-.logo{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#a78bfa);display:grid;place-items:center;color:#fff;font-family:monospace;font-weight:700}
-.nav-links{display:flex;gap:22px;font-size:14px}
-.nav-links a{color:var(--muted)}
-.nav-links a:hover{color:var(--fg);text-decoration:none}
-.hero{padding:84px 0 56px;text-align:center}
-.hero h1{font-size:52px;line-height:1.05;margin:0 0 18px;letter-spacing:-1.5px;font-weight:800}
-.hero .grad{background:linear-gradient(120deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero p{font-size:20px;color:var(--muted);max-width:620px;margin:0 auto 32px}
-.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.btn{padding:12px 22px;border-radius:9px;font-weight:600;font-size:15px;border:1px solid var(--border)}
-.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-.btn.primary:hover{background:#6a5cf0;text-decoration:none}
-.btn.ghost{background:var(--panel);color:var(--fg)}
-.btn.ghost:hover{background:var(--panel2);text-decoration:none}
-.install{margin:28px auto 0;max-width:420px}
-.install pre{background:var(--code);border:1px solid var(--border);border-radius:9px;padding:14px 18px;margin:0;text-align:left;overflow-x:auto}
-.install .prompt{color:var(--accent2)}
-section{padding:52px 0;border-top:1px solid var(--border)}
-h2{font-size:30px;letter-spacing:-.5px;margin:0 0 12px}
-.sub{color:var(--muted);margin:0 0 28px;font-size:17px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:640px){.grid{grid-template-columns:1fr}.hero h1{font-size:38px}}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px}
-.card h3{margin:0 0 8px;font-size:17px}
-.card p{margin:0;color:var(--muted);font-size:15px}
-pre.block{background:var(--code);border:1px solid var(--border);border-radius:10px;padding:18px;overflow-x:auto;font-size:14px;line-height:1.7}
-.cmt{color:#6b7185}
-.prompt{color:var(--accent2)}
-table{width:100%;border-collapse:collapse;font-size:15px}
-th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--border);vertical-align:top}
-th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.5px}
-td code{background:var(--panel2);padding:2px 7px;border-radius:5px;font-size:13px;white-space:nowrap}
-footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font-size:14px;text-align:center}
-.kv{color:var(--accent)}
-.step{color:var(--muted)}
-.step b{color:var(--fg)}
+@media (min-width: 64em) {
+  :root { --h1: 3.9rem; --h2: 2.35rem; --lead: 1.2rem; --section-y: 5rem; }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--body);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.02;
+  margin: 0;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+h1 { font-size: var(--h1); }
+h2 { font-size: var(--h2); line-height: 1.06; }
+h3 { font-size: var(--h3); line-height: 1.18; letter-spacing: -0.03em; }
+h1 .hl, h1 span.hl, .hero h1 span { color: var(--accent); }
+
+p { margin: 0 0 1rem; }
+p:last-child { margin-bottom: 0; }
+p.muted, .sub { color: var(--fg-dim); }
+
+a {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: color-mix(in srgb, var(--accent-ink) 35%, transparent);
+  text-underline-offset: 3px;
+}
+a:hover { text-decoration-color: var(--accent-ink); }
+
+code, .mono-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.wrap { width: 100%; max-width: var(--wide); margin: 0 auto; padding: 0 1.25rem; }
+@media (min-width: 44em) { .wrap { padding: 0 2rem; } }
+.measure { max-width: var(--measure); }
+
+/* ---------- header ----------
+   The mark is the family signal: full-colour coral-and-marigold fish on every
+   tool site, tool name beside it in the display face. */
+
+.site-head { padding: 1.5rem 0 0; font-size: var(--small); }
+.site-head .wrap {
+  display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem;
+  align-items: center; justify-content: space-between;
+}
+
+/* No flex gap: the wordmark is a text node plus a <span>, and a gap would open a
+   hole inside the name. The mark carries its own margin instead. */
+.brand {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-display); font-weight: 800;
+  font-size: 1.05rem; letter-spacing: -0.035em;
+  color: var(--fg); text-decoration: none;
+}
+.brand svg, .brand img { width: 1.85rem; height: 1.85rem; flex: none; display: block; margin-right: 0.6rem; }
+.brand .dim { color: var(--accent); }
+
+.site-head nav, .nav-links { display: flex; flex-wrap: wrap; gap: 0.5rem 1.35rem; }
+.site-head nav a, .nav-links a { color: var(--fg-dim); text-decoration: none; font-weight: 500; }
+.site-head nav a:hover, .nav-links a:hover { color: var(--accent-ink); }
+
+/* ---------- eyebrow ----------
+   The coral block is deliberately NOT the tool's accent. It is the one mark of
+   the parent studio that is identical on all five sites. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--micro); font-weight: 500;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--fg-mute);
+  margin: 0 0 1.25rem;
+  display: flex; align-items: center; gap: 0.6rem;
+}
+.eyebrow::before { content: ""; width: 1.35rem; height: 0.55rem; background: var(--hero); flex: none; }
+.eyebrow a { color: inherit; text-decoration: none; }
+.eyebrow a:hover { color: var(--fg); }
+
+/* ---------- hero ---------- */
+
+.hero { padding: 3.25rem 0 var(--section-y); border-top: 0; }
+.hero .lead, .tagline {
+  font-size: var(--lead); color: var(--fg-dim);
+  margin: 1.5rem 0 0; max-width: var(--measure);
+}
+.hero .lead strong, .tagline strong { color: var(--fg); font-weight: 600; }
+.hero .lead em, .tagline em { font-style: normal; color: var(--accent-ink); font-weight: 500; }
+
+.badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1.75rem 0 0; }
+.badges img { height: 20px; }
+.badges a { text-decoration: none; }
+
+.cta, .cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.75rem; }
+
+.btn {
+  display: inline-block; padding: 0.75rem 1.25rem;
+  border: 2px solid var(--fg); background: transparent; color: var(--fg);
+  font-family: var(--font-body); font-size: var(--small); font-weight: 600;
+  text-decoration: none; border-radius: 6px;
+}
+.btn:hover { background: var(--fg); color: var(--bg); }
+.btn.primary, .btn-primary {
+  background: var(--accent-ink); border-color: var(--accent-ink); color: #fff;
+}
+.btn.primary:hover, .btn-primary:hover { background: var(--fg); border-color: var(--fg); color: #fff; }
+.btn.ghost { background: transparent; }
+
+/* ---------- sections ---------- */
+
+section { padding: var(--section-y) 0; border-top: 1px solid var(--line); }
+section > h2:first-child, section > .eyebrow:first-child { margin-top: 0; }
+section h2 { margin-bottom: 0.9rem; }
+section h3 { margin: 1.75rem 0 0.5rem; }
+section > p, section > ul, section > ol { max-width: var(--measure); }
+section > p { color: var(--fg-dim); }
+.sub { margin: 0 0 1.75rem; max-width: var(--measure); }
+
+/* ---------- cards ---------- */
+
+.grid, .cards { display: grid; gap: 0.75rem; margin-top: 1.25rem; }
+@media (min-width: 44em) { .grid, .cards { grid-template-columns: 1fr 1fr; } }
+
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 5px solid var(--accent);
+  border-radius: 8px; padding: 1.5rem 1.35rem;
+}
+.card h3 { margin: 0 0 0.5rem; font-size: 1.1rem; color: var(--fg); }
+.card p { color: var(--fg-dim); font-size: var(--small); margin: 0; }
+.card p + p { margin-top: 0.6rem; }
+
+/* ---------- terminal ----------
+   Dark on paper so it reads as a quotation. The window chrome is gone; the three
+   dots are re-cut as sharp studio-palette squares, which is the same affordance
+   without the stock-screenshot cliche. */
+
+.term, .install {
+  background: var(--term-bg); border: 0; border-radius: 8px;
+  margin: 1.75rem 0 0; overflow: hidden; text-align: left; max-width: 46rem;
+}
+.term .bar {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.6rem 1.1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex; align-items: center; gap: 0.4rem;
+}
+.term .bar span { display: inline-block; width: 9px; height: 9px; border-radius: 0; }
+.dot-r { background: var(--hero); }
+.dot-y { background: var(--marigold); }
+.dot-g { background: var(--teal); }
+
+.term pre, .install pre {
+  margin: 0; padding: 1.15rem 1.25rem; overflow-x: auto;
+  font-family: var(--font-mono); font-size: var(--small); line-height: 1.7;
+  white-space: pre; color: var(--term-fg);
+}
+.c-cmd { color: var(--term-fg); }
+.c-muted, .cmt, .c-comment { color: var(--term-mute); }
+.c-green, .prompt { color: var(--term-ok); }
+.c-red { color: var(--term-bad); }
+.c-key, .kv { color: var(--term-key); }
+.c-yellow { color: var(--term-warn); }
+.c-str { color: var(--term-ok); }
+.c-acc { color: var(--term-key); }
+
+pre.block {
+  background: var(--term-bg); border: 0; border-radius: 8px;
+  padding: 1.15rem 1.25rem; overflow-x: auto; margin: 1.25rem 0;
+  font-family: var(--font-mono); font-size: var(--small); line-height: 1.7;
+  color: var(--term-fg);
+}
+
+/* ---------- tables ---------- */
+
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; margin-top: 1.25rem; font-size: var(--small); }
+th, td { text-align: left; padding: 0.85rem 0.75rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th {
+  color: var(--fg-mute); font-family: var(--font-mono); font-weight: 500;
+  font-size: var(--micro); letter-spacing: 0.1em; text-transform: uppercase;
+  border-bottom: 2px solid var(--rule);
+}
+td:first-child { color: var(--fg); font-weight: 500; }
+td.desc { color: var(--fg-dim); font-weight: 400; }
+td code, .inline-code {
+  font-family: var(--font-mono); font-size: 0.88em;
+  background: var(--surface-2); border: 1px solid var(--line);
+  padding: 0.1em 0.4em; border-radius: 4px; color: var(--fg);
+  white-space: nowrap;
+}
+p code, li code {
+  font-family: var(--font-mono); font-size: 0.88em;
+  background: var(--surface-2); border: 1px solid var(--line);
+  padding: 0.1em 0.4em; border-radius: 4px;
+}
+
+/* ---------- lists ---------- */
+
+ul, ol { padding-left: 1.15rem; }
+li { margin-bottom: 0.4rem; color: var(--fg-dim); }
+li strong, li b { color: var(--fg); font-weight: 600; }
+.step { color: var(--fg-dim); font-size: var(--small); margin-bottom: 0.5rem; }
+.step b { color: var(--fg); }
+
+/* ---------- footer + studio credit ----------
+   The credit is the contract with the parent brand: same mark, same wording, same
+   place, on all five sites. Do not localise it. */
+
+footer {
+  border-top: 1px solid var(--line);
+  padding: 2.5rem 0 3rem;
+  font-family: var(--font-mono); font-size: var(--micro);
+  color: var(--fg-mute); text-align: left;
+}
+footer .wrap { display: grid; gap: 0.6rem; }
+footer p { margin: 0; }
+footer a { color: var(--fg-dim); text-decoration: none; }
+footer a:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+footer b { color: var(--fg); font-weight: 500; }
+
+.studio-credit { margin-top: 1.25rem !important; }
+.studio-credit a { display: inline-flex; align-items: center; gap: 0.45em; color: var(--fg-mute); }
+.studio-credit a:hover { color: var(--fg); }
+.studio-credit svg { flex: none; }
+
+::selection { background: var(--accent); color: #fff; }
+
+:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  a, .btn, .card { transition: color .12s, background-color .12s, border-color .12s; }
+}
+
+@media (max-width: 640px) {
+  .term pre, .install pre, pre.block { font-size: 0.82rem; }
+}
+
+/* ── mycadre · teal · "off-register" ─────────────────────────────────────────
+   The mark is two plates of the same fish, printed slightly out of alignment.
+   mycadre is two checkouts of the same repo, slightly out of alignment. So this
+   site is the only one that draws the offset in type: the accent word in the h1
+   carries a marigold ghost a few hundredths of an em behind it, and cards sit on
+   a hard offset shadow instead of a soft one. Nothing blurs; every edge is sharp,
+   the way a misregistered plate actually looks. */
+
+:root {
+  --accent: #0fa3a3;       /* teal */
+  --accent-ink: #0c7f7f;   /* 4.51:1 on paper, 4.82:1 on white */
+  --accent-wash: #e9f6f6;
+}
+
+.hero h1 span, h1 .hl {
+  color: var(--accent);
+  text-shadow: 0.055em 0.045em 0 var(--marigold);
+}
+
+/* The offset plate, again, as the card's resting state. */
+.card {
+  border-left-width: 1px;
+  border-left-color: var(--line);
+  box-shadow: 5px 5px 0 var(--accent-wash);
+}
+.card:hover { box-shadow: 5px 5px 0 var(--accent); border-color: var(--fg); }
+
+.install, .term { box-shadow: 6px 6px 0 var(--accent-wash); }
+
+/* Nav gets the same logic at small scale: the hover state slides the underline
+   into register rather than fading it in. */
+.site-head nav a, .nav-links a {
+  border-bottom: 2px solid transparent;
+  padding-bottom: 1px;
+}
+.site-head nav a:hover, .nav-links a:hover { border-bottom-color: var(--accent); }
 </style>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-DZTVZQHYVP"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-DZTVZQHYVP');</script>
 </head>
 <body>
-<header>
-  <div class="wrap nav">
-    <div class="brand"><span class="logo">m</span>mycadre</div>
-    <nav class="nav-links">
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="/"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="30" height="30" aria-hidden="true" focusable="false">
+  <defs>
+    <clipPath id="mcFpPlate">
+      <path d="M112 64 C100 38 66 36 44 55 L23 37 L17 44 L36 64 L17 84 L23 91 L44 73 C66 94 100 92 112 64 Z" transform="rotate(-34 65 64) translate(8 3)"/>
+    </clipPath>
+    <mask id="mcFpEye">
+      <rect x="-40" y="-40" width="208" height="208" fill="#fff"/>
+      <circle cx="90" cy="56" r="5" fill="#000" transform="rotate(-34 65 64)"/>
+    </mask>
+  </defs>
+  <g transform="translate(-5 -1)">
+    <g mask="url(#mcFpEye)">
+      <path d="M112 64 C100 38 66 36 44 55 L23 37 L17 44 L36 64 L17 84 L23 91 L44 73 C66 94 100 92 112 64 Z" transform="rotate(-34 65 64) translate(8 3)" fill="#FFB302"/>
+      <path d="M112 64 C100 38 66 36 44 55 L23 37 L17 44 L36 64 L17 84 L23 91 L44 73 C66 94 100 92 112 64 Z" transform="rotate(-34 65 64)" fill="#FF4D3D"/>
+      <path d="M112 64 C100 38 66 36 44 55 L23 37 L17 44 L36 64 L17 84 L23 91 L44 73 C66 94 100 92 112 64 Z" transform="rotate(-34 65 64)" fill="#FF3600" clip-path="url(#mcFpPlate)"/>
+    </g>
+  </g>
+</svg>mycadre</a>
+    <nav>
       <a href="#quickstart">Quick start</a>
       <a href="#commands">Commands</a>
       <a href="#config">Config</a>
@@ -84,71 +411,84 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
   </div>
 </header>
 
-<main class="wrap">
-  <section class="hero" style="border-top:none">
-    <h1>Git worktrees that are<br><span class="grad">ready to work.</span></h1>
-    <p>A fresh <code>git worktree</code> is never actually ready — your <code>.env</code> files are missing and dependencies aren't installed. <b>mycadre</b> creates the worktree, copies your local config, runs your setup, and tracks it so cleanup is one command.</p>
-    <div class="cta">
-      <a class="btn primary" href="#quickstart">Get started</a>
-      <a class="btn ghost" href="https://github.com/flossypurse-studios/mycadre">View source</a>
-    </div>
-    <div class="install">
-      <pre><span class="prompt">$</span> npm install -g mycadre
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow"><a href="https://flossypurse.studio">A FlossyPurse Studios tool</a></p>
+      <h1>Git worktrees that are<br><span class="hl">ready to work.</span></h1>
+      <p class="lead">A fresh <code>git worktree</code> is never actually ready — your <code>.env</code> files are missing and dependencies aren't installed. <b>mycadre</b> creates the worktree, copies your local config, runs your setup, and tracks it so cleanup is one command.</p>
+      <div class="cta">
+        <a class="btn primary" href="#quickstart">Get started</a>
+        <a class="btn ghost" href="https://github.com/flossypurse-studios/mycadre">View source</a>
+      </div>
+      <div class="install">
+        <pre><span class="prompt">$</span> npm install -g mycadre
 <span class="cmt"># then, in any git repo:</span>
 <span class="prompt">$</span> mycadre create my-feature</pre>
+      </div>
     </div>
   </section>
 
   <section id="why">
-    <h2>Why it exists</h2>
-    <p class="sub">Worktrees are great for working several branches at once — reviewing a PR while your feature branch builds, or running a fleet of AI coding agents in parallel, each in its own checkout. But every fresh checkout starts broken.</p>
-    <div class="grid">
-      <div class="card"><h3>Env files are gone</h3><p>Gitignored files like <code>.env</code> never make it into a new worktree. mycadre copies the ones you name.</p></div>
-      <div class="card"><h3>Nothing is installed</h3><p>No <code>node_modules</code>, no build. mycadre runs your setup command right after creating the checkout.</p></div>
-      <div class="card"><h3>Orphans pile up</h3><p>It's easy to forget which directories you made. mycadre tracks every worktree so listing and cleanup are trivial.</p></div>
-      <div class="card"><h3>Zero config to start</h3><p>One <code>init</code> writes a small <code>mycadre.json</code> you commit and share with your team. No global setup.</p></div>
+    <div class="wrap">
+      <h2>Why it exists</h2>
+      <p class="sub">Worktrees are great for working several branches at once — reviewing a PR while your feature branch builds, or running a fleet of AI coding agents in parallel, each in its own checkout. But every fresh checkout starts broken.</p>
+      <div class="grid">
+        <div class="card"><h3>Env files are gone</h3><p>Gitignored files like <code>.env</code> never make it into a new worktree. mycadre copies the ones you name.</p></div>
+        <div class="card"><h3>Nothing is installed</h3><p>No <code>node_modules</code>, no build. mycadre runs your setup command right after creating the checkout.</p></div>
+        <div class="card"><h3>Orphans pile up</h3><p>It's easy to forget which directories you made. mycadre tracks every worktree so listing and cleanup are trivial.</p></div>
+        <div class="card"><h3>Zero config to start</h3><p>One <code>init</code> writes a small <code>mycadre.json</code> you commit and share with your team. No global setup.</p></div>
+      </div>
     </div>
   </section>
 
   <section id="quickstart">
-    <h2>Quick start</h2>
-    <p class="sub">Requires Node.js &ge; 18 and <code>git</code> on your PATH.</p>
+    <div class="wrap">
+      <h2>Quick start</h2>
+      <p class="sub">Requires Node.js &ge; 18 and <code>git</code> on your PATH.</p>
 <pre class="block"><span class="cmt"># in your project's git repo</span>
 <span class="prompt">$</span> mycadre init                 <span class="cmt"># writes mycadre.json (edit to taste)</span>
 <span class="prompt">$</span> mycadre create feature/login <span class="cmt"># new branch + worktree, env copied, setup run</span>
 <span class="prompt">$</span> mycadre list                 <span class="cmt"># see your tracked worktrees</span>
 <span class="prompt">$</span> mycadre remove feature/login <span class="cmt"># delete the worktree and its branch</span>
 <span class="prompt">$</span> mycadre clean                <span class="cmt"># prune worktrees git already dropped</span></pre>
+    </div>
   </section>
 
   <section id="commands">
-    <h2>Commands</h2>
-    <p class="sub">Six commands, that's the whole surface.</p>
-    <table>
-      <thead><tr><th>Command</th><th>What it does</th></tr></thead>
-      <tbody>
-        <tr><td><code>mycadre init</code></td><td>Create a <code>mycadre.json</code> config at the repo root.</td></tr>
-        <tr><td><code>mycadre create &lt;branch&gt; [--from &lt;base&gt;]</code></td><td>Create a worktree for <code>&lt;branch&gt;</code> (new branch off <code>&lt;base&gt;</code> or the current branch, unless it already exists), copy configured files into it, and run the setup command.</td></tr>
-        <tr><td><code>mycadre list</code></td><td>List tracked worktrees and flag any that have gone missing.</td></tr>
-        <tr><td><code>mycadre remove &lt;branch&gt; [--keep-branch] [--force]</code></td><td>Remove the worktree and (unless <code>--keep-branch</code>) delete the branch.</td></tr>
-        <tr><td><code>mycadre clean</code></td><td>Prune git worktrees and drop stale tracking entries.</td></tr>
-        <tr><td><code>mycadre doctor [--json]</code></td><td>Check that git, your repo, <code>mycadre.json</code>, <code>worktreeDir</code>, and tracked worktrees are all in a healthy state. Exits 1 if anything's wrong.</td></tr>
-      </tbody>
-    </table>
+    <div class="wrap">
+      <h2>Commands</h2>
+      <p class="sub">Six commands, that's the whole surface.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>mycadre init</code></td><td class="desc">Create a <code>mycadre.json</code> config at the repo root.</td></tr>
+            <tr><td><code>mycadre create &lt;branch&gt; [--from &lt;base&gt;]</code></td><td class="desc">Create a worktree for <code>&lt;branch&gt;</code> (new branch off <code>&lt;base&gt;</code> or the current branch, unless it already exists), copy configured files into it, and run the setup command.</td></tr>
+            <tr><td><code>mycadre list</code></td><td class="desc">List tracked worktrees and flag any that have gone missing.</td></tr>
+            <tr><td><code>mycadre remove &lt;branch&gt; [--keep-branch] [--force]</code></td><td class="desc">Remove the worktree and (unless <code>--keep-branch</code>) delete the branch.</td></tr>
+            <tr><td><code>mycadre clean</code></td><td class="desc">Prune git worktrees and drop stale tracking entries.</td></tr>
+            <tr><td><code>mycadre doctor [--json]</code></td><td class="desc">Check that git, your repo, <code>mycadre.json</code>, <code>worktreeDir</code>, and tracked worktrees are all in a healthy state. Exits 1 if anything's wrong.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
   <section id="config">
-    <h2>Configuration</h2>
-    <p class="sub"><code>mycadre init</code> writes a <code>mycadre.json</code> at your repo root:</p>
+    <div class="wrap">
+      <h2>Configuration</h2>
+      <p class="sub"><code>mycadre init</code> writes a <code>mycadre.json</code> at your repo root:</p>
 <pre class="block">{
   <span class="kv">"worktreeDir"</span>: <span class="prompt">"../mycadre-worktrees"</span>,
   <span class="kv">"copy"</span>: [<span class="prompt">".env"</span>, <span class="prompt">".env.local"</span>],
   <span class="kv">"setup"</span>: <span class="prompt">"npm install"</span>
 }</pre>
-    <p class="step" style="margin-top:20px"><b>worktreeDir</b> — where worktrees are created, relative to the repo root.</p>
-    <p class="step"><b>copy</b> — files/directories copied from the repo root into each new worktree (typically gitignored local config). Missing entries are skipped silently.</p>
-    <p class="step"><b>setup</b> — a shell command run inside the new worktree after creation, or <code>null</code> to skip.</p>
-    <p class="sub" style="margin-top:22px">Commit <code>mycadre.json</code> so your team shares the same setup. mycadre stores tracking data in <code>.mycadre-state.json</code> — add that to your <code>.gitignore</code>.</p>
+      <p class="step"><b>worktreeDir</b> — where worktrees are created, relative to the repo root.</p>
+      <p class="step"><b>copy</b> — files/directories copied from the repo root into each new worktree (typically gitignored local config). Missing entries are skipped silently.</p>
+      <p class="step"><b>setup</b> — a shell command run inside the new worktree after creation, or <code>null</code> to skip.</p>
+      <p class="sub" style="margin-top:1.5rem">Commit <code>mycadre.json</code> so your team shares the same setup. mycadre stores tracking data in <code>.mycadre-state.json</code> — add that to your <code>.gitignore</code>.</p>
+    </div>
   </section>
 </main>
 
