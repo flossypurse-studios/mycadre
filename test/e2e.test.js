@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync, lstatSync, realpathSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync, lstatSync, realpathSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1868,4 +1868,86 @@ test("doctor --help exits 0 and prints usage to stdout", () => {
   assert.equal(res.status, 0);
   assert.match(res.stdout, /Usage: mycadre doctor/);
   assert.equal(res.stderr, "");
+});
+
+// ---------------------------------------------------------------------------
+// Issue #13 (cold review): two surviving mutations in src/config.ts.
+// ---------------------------------------------------------------------------
+
+test("issue #13: acquireLock waits out a lock held by another process, then succeeds", async () => {
+  const repo = initRepo("mycadre-i13-lock-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  const lock = path.join(repo, ".mycadre-state.lock");
+  try {
+    sh(["init"], repo);
+
+    // Issue #9 built a retry/backoff loop into acquireLock, but its test only
+    // raced two `create` calls — which is timing-dependent and, in practice,
+    // never made either process find the lock already taken. So the retry
+    // branch went uncovered: inverting `if (err.code !== "EEXIST") throw err`
+    // left the whole suite green. Here the contention is deterministic. We
+    // hold the lock file ourselves, exactly as a mid-write mycadre process
+    // would, and `clean` (which takes the lock immediately, before doing any
+    // other work) must block rather than give up.
+    writeFileSync(lock, "");
+    const HOLD_MS = 400;
+    const started = Date.now();
+    const pending = spawnAsync(["clean"], repo);
+    const release = new Promise((r) => setTimeout(r, HOLD_MS)).then(() => {
+      assert.ok(existsSync(lock), "our lock must still be there — clean may not steal it");
+      unlinkSync(lock);
+    });
+    const [res] = await Promise.all([pending, release]);
+    const elapsed = Date.now() - started;
+
+    assert.equal(res.status, 0, `clean should wait for the lock and then succeed: ${res.stderr}`);
+    assert.match(res.stdout, /Nothing to clean\./);
+    assert.doesNotMatch(
+      res.stderr,
+      /timed out waiting for state lock/,
+      "the 5s deadline must not fire for a lock held only briefly"
+    );
+    assert.ok(
+      elapsed >= HOLD_MS - 50,
+      `clean finished after only ${elapsed}ms — it did not wait for the held lock`
+    );
+    assert.ok(!existsSync(lock), "lock released once clean is done");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("issue #13: a corrupt state file is recovered from, not thrown at", () => {
+  const repo = initRepo("mycadre-i13-corrupt-");
+  const worktrees = path.resolve(repo, "../mycadre-worktrees");
+  const statePath = path.join(repo, ".mycadre-state.json");
+  try {
+    sh(["init"], repo);
+
+    // A write interrupted partway through, or a botched manual edit, leaves
+    // .mycadre-state.json unparseable. loadState catches that and falls back
+    // to an empty state; list/remove/clean call it with no catch of their own,
+    // so without the fallback they spray a raw `Unexpected ... in JSON` at the
+    // user and exit 1.
+    writeFileSync(statePath, '{\n  "worktrees": [\n    { "branch": "feature/x", "pa');
+
+    const res = spawnSync("node", [CLI, "list"], { cwd: repo, encoding: "utf8" });
+    assert.equal(res.status, 0, `list should recover from a corrupt state file: ${res.stderr}`);
+    assert.match(res.stdout, /No mycadre worktrees tracked/);
+    assert.doesNotMatch(res.stderr, /JSON/, "no raw JSON parse error leaks to the user");
+
+    // --json stays machine-readable: an empty array, not a crash.
+    const asJson = spawnSync("node", [CLI, "list", "--json"], { cwd: repo, encoding: "utf8" });
+    assert.equal(asJson.status, 0, `list --json should recover too: ${asJson.stderr}`);
+    assert.deepEqual(JSON.parse(asJson.stdout), []);
+
+    // The write path recovers as well, and leaves valid JSON behind.
+    const cleaned = spawnSync("node", [CLI, "clean"], { cwd: repo, encoding: "utf8" });
+    assert.equal(cleaned.status, 0, `clean should recover too: ${cleaned.stderr}`);
+    assert.deepEqual(JSON.parse(readFileSync(statePath, "utf8")), { worktrees: [] });
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
 });
