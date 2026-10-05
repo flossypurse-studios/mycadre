@@ -11,7 +11,7 @@ const HELP = `mycadre — git worktrees that are ready to work
 
 Usage:
   mycadre init                       Create a mycadre.json config in this repo
-  mycadre create <branch> [--from <base>] [--no-setup] [--json]
+  mycadre create <branch> [--from <base>] [--no-setup] [--trust-setup] [--json]
                                       Create a worktree for <branch>, copy
                                       configured files (e.g. .env) into it,
                                       and run the configured setup command.
@@ -53,12 +53,14 @@ function getVersion(): string {
 const SUBCOMMAND_USAGE: Record<string, string> = {
   init: `Usage: mycadre init
   Create a mycadre.json config in this repo.`,
-  create: `Usage: mycadre create <branch> [--from <base>] [--no-setup] [--json]
+  create: `Usage: mycadre create <branch> [--from <base>] [--no-setup] [--trust-setup] [--json]
   Create a worktree for <branch>, copy configured files (e.g. .env) into it,
   and run the configured setup command. Tracks an existing remote branch of the
   same name if there is one.
   --from <base>  fork the new branch from <base> instead of the current branch
   --no-setup     skip the configured setup command
+  --trust-setup  run the setup command without asking, and trust it for this repo
+                 (an untrusted setup command is asked about on a terminal, skipped otherwise)
   --json         print {"branch","path"} to stdout and suppress human logs`,
   list: `Usage: mycadre list [--json]
   List tracked worktrees. --json emits machine-readable output for scripts.`,
@@ -79,7 +81,7 @@ const SUBCOMMAND_USAGE: Record<string, string> = {
 // canonical command's entry.
 const KNOWN_FLAGS: Record<string, string[]> = {
   init: ["help"],
-  create: ["from", "no-setup", "json", "help"],
+  create: ["from", "no-setup", "trust-setup", "json", "help"],
   list: ["json", "help"],
   ls: ["json", "help"],
   remove: ["keep-branch", "force", "help"],
@@ -146,6 +148,7 @@ function main(): void {
         runCreate(positional[0], {
           from: flags.from as string | undefined,
           noSetup: Boolean(flags["no-setup"]),
+          trustSetup: Boolean(flags["trust-setup"]),
           json: Boolean(flags.json),
         });
         break;

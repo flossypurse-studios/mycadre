@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, cpSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, cpSync, symlinkSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import {
@@ -9,11 +9,34 @@ import {
   currentBranch,
 } from "../git.js";
 import { loadConfig, updateState } from "../config.js";
+import { isTrusted, recordTrust, confirmOnTty } from "../trust.js";
 
 export interface CreateOptions {
   from?: string;
   noSetup?: boolean;
+  trustSetup?: boolean;
   json?: boolean;
+}
+
+/** Resolve a copy entry, refusing anything that escapes the repo or the worktree. */
+function safeCopyPaths(root: string, targetPath: string, rel: string): { src: string; dest: string } {
+  if (typeof rel !== "string" || rel === "" || path.isAbsolute(rel)) {
+    throw new Error(`mycadre.json copy entry must be a relative path inside the repo: ${JSON.stringify(rel)}`);
+  }
+  const inside = (base: string, p: string) => {
+    const r = path.relative(base, p);
+    return r !== "" && !r.startsWith("..") && !path.isAbsolute(r);
+  };
+  const src = path.resolve(root, rel);
+  const dest = path.resolve(targetPath, rel);
+  if (!inside(root, src) || !inside(targetPath, dest)) {
+    throw new Error(`mycadre.json copy entry escapes the repo: ${rel}`);
+  }
+  // A symlink inside the repo can still point outside it.
+  if (existsSync(src) && !inside(realpathSync(root), realpathSync(src))) {
+    throw new Error(`mycadre.json copy entry resolves outside the repo (symlink): ${rel}`);
+  }
+  return { src, dest };
 }
 
 export function runCreate(branch: string, opts: CreateOptions): void {
@@ -89,8 +112,7 @@ export function runCreate(branch: string, opts: CreateOptions): void {
     for (const entry of config.copy) {
       const isSymlink = typeof entry === "object" && entry.mode === "symlink";
       const rel = typeof entry === "string" ? entry : entry.path;
-      const src = path.join(root, rel);
-      const dest = path.join(targetPath, rel);
+      const { src, dest } = safeCopyPaths(root, targetPath, rel);
       if (!existsSync(src)) continue;
       if (isSymlink) {
         // Relative symlink target so the worktree stays portable if the repo
@@ -108,7 +130,13 @@ export function runCreate(branch: string, opts: CreateOptions): void {
     // Run setup command, if configured (unless suppressed with --no-setup, issue #5).
     if (config.setup && opts.noSetup) {
       log(`Skipping setup (--no-setup): ${config.setup}`);
+    } else if (config.setup && !isTrusted(root, config.setup) && !opts.trustSetup &&
+      !(!opts.json && confirmOnTty(
+        `\nThis repo's mycadre.json wants to run a setup command:\n  ${config.setup}\nRun it now and trust it for this repo? [y/N] `))) {
+      log(`Skipping untrusted setup command: ${config.setup}\n` +
+        `Review it, then re-run with --trust-setup (or answer y at the prompt) to run and trust it.`);
     } else if (config.setup) {
+      recordTrust(root, config.setup);
       log(`Running setup: ${config.setup}`);
       execSync(config.setup, {
         cwd: targetPath,

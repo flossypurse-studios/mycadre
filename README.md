@@ -47,7 +47,7 @@ mycadre clean                # prune worktrees git already dropped
 | Command | What it does |
 | --- | --- |
 | `mycadre init` | Create a `mycadre.json` config at the repo root. |
-| `mycadre create <branch> [--from <base>] [--no-setup] [--json]` | Create a worktree for `<branch>` (new branch off `<base>`, or the current branch, unless it already exists), copy configured files into it, and run the setup command. `--no-setup` skips the setup command; `--json` prints `{"branch","path"}` to stdout (progress logs go to stderr) for scripting. |
+| `mycadre create <branch> [--from <base>] [--no-setup] [--trust-setup] [--json]` | Create a worktree for `<branch>` (new branch off `<base>`, or the current branch, unless it already exists), copy configured files into it, and run the setup command. `--no-setup` skips the setup command; `--trust-setup` runs an untrusted one without asking; `--json` prints `{"branch","path"}` to stdout (progress logs go to stderr) for scripting. |
 | `mycadre list [--json]` | List tracked worktrees and flag any that have gone missing. `--json` prints machine-readable output for scripts. |
 | `mycadre remove <branch> [--keep-branch] [--force]` | Remove the worktree and (unless `--keep-branch`) delete the branch. |
 | `mycadre clean` | Prune git worktrees and drop stale tracking entries. |
@@ -85,7 +85,13 @@ mycadre clean                # prune worktrees git already dropped
     The symlink target is relative, so the link keeps working if you move the
     repo (and its worktrees) to a new location together.
 - **`setup`** — a shell command run inside the new worktree after creation, or
-  `null` to skip.
+  `null` to skip. Because a cloned repo's `mycadre.json` can say anything, the
+  first time a given command runs in a given repo mycadre shows it and asks
+  `[y/N]` on your terminal; without a terminal it is skipped. `--trust-setup`
+  runs it without asking. Trust is remembered per repo and per exact command
+  in `~/.config/mycadre/trusted.json`, so editing the command asks again.
+- **`copy`** entries must be relative paths inside the repo. Absolute paths,
+  `..`, and symlinks that point outside the repo are refused.
 
 Commit `mycadre.json` so your team shares the same setup. mycadre stores its
 tracking data in `.mycadre-state.json` — add that to your `.gitignore`.

@@ -36,7 +36,19 @@ export function loadConfig(root: string): MycadreConfig {
   const p = configPath(root);
   if (!existsSync(p)) return { ...DEFAULT_CONFIG };
   const raw = JSON.parse(readFileSync(p, "utf8"));
-  return { ...DEFAULT_CONFIG, ...raw };
+  const config = { ...DEFAULT_CONFIG, ...raw };
+  if (config.setup !== null && typeof config.setup !== "string") {
+    throw new Error(`${p}: "setup" must be a string or null`);
+  }
+  if (!Array.isArray(config.copy) || !config.copy.every(
+    (e: unknown) => typeof e === "string" || (typeof e === "object" && e !== null && typeof (e as { path?: unknown }).path === "string"),
+  )) {
+    throw new Error(`${p}: "copy" must be an array of paths or {"path": ...} entries`);
+  }
+  if (typeof config.worktreeDir !== "string") {
+    throw new Error(`${p}: "worktreeDir" must be a string`);
+  }
+  return config;
 }
 
 export function writeConfig(root: string, config: MycadreConfig): void {

@@ -12,8 +12,12 @@ const PKG_VERSION = JSON.parse(
   readFileSync(path.resolve(__dirname, "../package.json"), "utf8")
 ).version;
 
+// Isolate setup-command trust from the real ~/.config/mycadre/trusted.json.
+const TRUST_HOME = mkdtempSync(path.join(tmpdir(), "mycadre-trust-"));
+const TEST_ENV = { ...process.env, XDG_CONFIG_HOME: TRUST_HOME };
+
 function sh(args, cwd) {
-  return execFileSync("node", [CLI, ...args], { cwd, encoding: "utf8" });
+  return execFileSync("node", [CLI, ...args], { cwd, encoding: "utf8", env: TEST_ENV });
 }
 
 function git(args, cwd) {
@@ -513,7 +517,7 @@ test("create runs the configured setup command inside the new worktree", () => {
     cfg.setup = "echo ran > setup-marker.txt";
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 
-    const out = sh(["create", "feature/setup"], repo);
+    const out = sh(["create", "feature/setup", "--trust-setup"], repo);
     assert.match(out, /Running setup:/, "announces the setup command");
 
     const wt = path.join(worktrees, "feature-setup");
@@ -546,7 +550,7 @@ test("create rolls back the worktree and branch when setup fails (issue #6)", ()
     cfg.setup = "exit 99";
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 
-    const res = spawnSync("node", [CLI, "create", "feature/broken"], {
+    const res = spawnSync("node", [CLI, "create", "feature/broken", "--trust-setup"], { env: TEST_ENV,
       cwd: repo,
       encoding: "utf8",
     });
@@ -601,7 +605,7 @@ test("create preserves a pre-existing branch when setup fails (issue #6)", () =>
     cfg.setup = "exit 99";
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 
-    const res = spawnSync("node", [CLI, "create", "keepme"], {
+    const res = spawnSync("node", [CLI, "create", "keepme", "--trust-setup"], { env: TEST_ENV,
       cwd: repo,
       encoding: "utf8",
     });
@@ -1949,5 +1953,84 @@ test("issue #13: a corrupt state file is recovered from, not thrown at", () => {
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+// --- Security: untrusted setup commands and copy-path traversal (2026-10-05) ---
+
+function securityRepo(cfgPatch) {
+  const repo = mkdtempSync(path.join(tmpdir(), "mycadre-sec-"));
+  git(["init"], repo);
+  git(["config", "user.email", "t@t.co"], repo);
+  git(["config", "user.name", "t"], repo);
+  git(["config", "commit.gpgsign", "false"], repo);
+  writeFileSync(path.join(repo, "README.md"), "hi\n");
+  git(["add", "README.md"], repo);
+  git(["commit", "-m", "init"], repo);
+  sh(["init"], repo);
+  const cfgPath = path.join(repo, "mycadre.json");
+  const cfg = { ...JSON.parse(readFileSync(cfgPath, "utf8")), ...cfgPatch };
+  writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+  return { repo, cfgPath, worktrees: path.resolve(repo, "../mycadre-worktrees") };
+}
+
+test("an untrusted setup command is NOT run without a terminal", () => {
+  const { repo, worktrees } = securityRepo({ setup: "echo pwned > pwned.txt" });
+  try {
+    const out = sh(["create", "sec/untrusted"], repo);
+    assert.match(out, /Skipping untrusted setup command/);
+    assert.ok(!existsSync(path.join(worktrees, "sec-untrusted", "pwned.txt")), "setup must not have run");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+test("a trusted setup runs again without the flag; changing the command revokes trust", () => {
+  const { repo, cfgPath, worktrees } = securityRepo({ setup: "echo a > a.txt" });
+  try {
+    sh(["create", "sec/one", "--trust-setup"], repo);
+    assert.ok(existsSync(path.join(worktrees, "sec-one", "a.txt")));
+    sh(["create", "sec/two"], repo);
+    assert.ok(existsSync(path.join(worktrees, "sec-two", "a.txt")), "trusted command runs without the flag");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.setup = "echo b > b.txt";
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+    const out = sh(["create", "sec/three"], repo);
+    assert.match(out, /Skipping untrusted setup command/);
+    assert.ok(!existsSync(path.join(worktrees, "sec-three", "b.txt")), "changed command must ask again");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+  }
+});
+
+for (const [label, entry] of [["../ traversal", "../outside.txt"], ["absolute path", "/etc/hosts"]]) {
+  test(`copy refuses a ${label}`, () => {
+    const { repo, worktrees } = securityRepo({ copy: [entry] });
+    try {
+      const res = spawnSync("node", [CLI, "create", "sec/copy"], { cwd: repo, encoding: "utf8", env: TEST_ENV });
+      assert.notEqual(res.status, 0);
+      assert.match(res.stderr, /copy entry/);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+      rmSync(worktrees, { recursive: true, force: true });
+    }
+  });
+}
+
+test("copy refuses a symlink inside the repo that points outside it", () => {
+  const { repo, worktrees } = securityRepo({ copy: ["link.txt"] });
+  const outside = mkdtempSync(path.join(tmpdir(), "mycadre-outside-"));
+  try {
+    writeFileSync(path.join(outside, "secret.txt"), "s\n");
+    execFileSync("ln", ["-s", path.join(outside, "secret.txt"), path.join(repo, "link.txt")]);
+    const res = spawnSync("node", [CLI, "create", "sec/link"], { cwd: repo, encoding: "utf8", env: TEST_ENV });
+    assert.notEqual(res.status, 0);
+    assert.match(res.stderr, /outside the repo/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(worktrees, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });
