@@ -444,7 +444,7 @@ footer b { color: var(--fg); font-weight: 500; }
     <div class="wrap">
       <p class="eyebrow"><a href="https://flossypurse.studio">A FlossyPurse Studios tool</a></p>
       <h1>Git worktrees that are<br><span class="hl">ready to work.</span></h1>
-      <p class="lead">A fresh <code>git worktree</code> is never actually ready — your <code>.env</code> files are missing and dependencies aren't installed. <b>mycadre</b> creates the worktree, copies your local config, runs your setup, and tracks it so cleanup is one command.</p>
+      <p class="lead">Plain <code>git worktree add</code> just creates the checkout — your <code>.env</code> files are missing and nothing is installed. <b>mycadre</b> creates the worktree, copies your local config, runs your setup, and tracks it so cleanup is one command.</p>
       <div class="cta">
         <a class="btn primary" href="#quickstart">Get started</a>
         <a class="btn ghost" href="https://github.com/flossypurse-studios/mycadre">View source</a>
@@ -460,7 +460,7 @@ footer b { color: var(--fg); font-weight: 500; }
   <section id="why">
     <div class="wrap">
       <h2>Why it exists</h2>
-      <p class="sub">Worktrees are great for working several branches at once — reviewing a PR while your feature branch builds, or running a fleet of AI coding agents in parallel, each in its own checkout. But every fresh checkout starts broken.</p>
+      <p class="sub">Worktrees are great for working several branches at once — reviewing a PR while your feature branch builds, or running a fleet of AI coding agents in parallel, each in its own checkout. But <code>git worktree add</code> alone leaves every checkout to set up by hand.</p>
       <div class="grid">
         <div class="card"><h3>Env files are gone</h3><p>Gitignored files like <code>.env</code> never make it into a new worktree. mycadre copies the ones you name.</p></div>
         <div class="card"><h3>Nothing is installed</h3><p>No <code>node_modules</code>, no build. mycadre runs your setup command right after creating the checkout.</p></div>
@@ -500,6 +500,13 @@ footer b { color: var(--fg); font-weight: 500; }
           </tbody>
         </table>
       </div>
+    </div>
+  </section>
+
+  <section id="similar">
+    <div class="wrap">
+      <h2>Similar tools</h2>
+      <p class="sub"><a href="https://github.com/max-sixty/worktrunk">Worktrunk</a> manages worktrees by branch name and adds hooks, a merge workflow, and shared build caches. Claude Code (<code>--worktree</code>/<code>-w</code>) and Cursor's Agents Window both create a worktree per parallel agent automatically. mycadre is smaller and more general: no agent runner, no build cache — one <code>mycadre.json</code>, copy some files, run one setup command, track what you made.</p>
     </div>
   </section>
 

@@ -8,9 +8,10 @@ so you can list and clean up worktrees without leaving orphans behind.
 
 Git worktrees are great for working on several branches at once — reviewing a PR
 while your feature branch keeps building, or running a fleet of AI coding agents in
-parallel, each in its own checkout. But a fresh worktree is never actually ready:
-your `.env` files aren't there (they're gitignored), dependencies aren't installed,
-and it's easy to lose track of the directories you created. `mycadre` fixes that.
+parallel, each in its own checkout. Plain `git worktree add` just creates the
+checkout: it doesn't copy your gitignored `.env` files, run your setup command, or
+track what you made for later cleanup. `mycadre` does — in a small, zero-dependency
+CLI configured by one `mycadre.json` file.
 
 ## Install
 
@@ -95,6 +96,14 @@ tracking data in `.mycadre-state.json` — add that to your `.gitignore`.
 `git worktree` gives you the checkout. `mycadre` gives you a checkout you can
 immediately work in: local env files present, dependencies installed, and a record
 of what you created so cleanup is one command instead of archaeology.
+
+## Similar tools
+
+[Worktrunk](https://github.com/max-sixty/worktrunk) manages worktrees by branch name
+and adds hooks, a merge workflow, and shared build caches. Claude Code (`--worktree`/
+`-w`) and Cursor's Agents Window both create a worktree per parallel agent for you
+automatically. mycadre is smaller and more general: no agent runner, no build cache —
+one `mycadre.json`, copy some files, run one setup command, track what you made.
 
 ## Troubleshooting
 
