@@ -215,7 +215,7 @@ test("fresh: an unreachable remote (offline) is exit 2 even though local refs lo
     const r = freshJson(ctx);
     assert.equal(r.status, 2, r.out);
     assert.equal(r.json.verdict, "unchecked");
-    assert.match(byName(r.json, "base").detail, /could not reach 'origin'/);
+    assert.match(byName(r.json, "base").detail, /could not reach 'origin': .*does not appear to be a git repository/);
   } finally {
     ctx.cleanup();
   }
