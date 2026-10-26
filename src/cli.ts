@@ -6,6 +6,7 @@ import { runList } from "./commands/list.js";
 import { runRemove } from "./commands/remove.js";
 import { runClean } from "./commands/clean.js";
 import { runDoctor } from "./commands/doctor.js";
+import { runFresh, EXIT_UNCHECKED } from "./commands/fresh.js";
 
 const HELP = `mycadre — git worktrees that are ready to work
 
@@ -27,6 +28,13 @@ Usage:
   mycadre clean                      Prune worktrees and drop stale tracking entries
   mycadre doctor [--json]            Check git, config, worktreeDir, and tracked
                                       worktrees for common problems
+  mycadre fresh [--live <url>] [--base <branch>] [--remote <name>] [--no-pr] [--json]
+                                      Read-only check to run before a diff,
+                                      review, push, PR, deploy or publish: is
+                                      HEAD built on the remote default branch,
+                                      is local main behind, is the branch's PR
+                                      still open at HEAD, is production ahead.
+                                      Exit 0 fresh, 1 stale, 2 could not check.
   mycadre --version                  Print the installed version
   mycadre --help                     Show this help
 
@@ -72,6 +80,22 @@ const SUBCOMMAND_USAGE: Record<string, string> = {
   .mycadre-state.json parse, worktreeDir is usable, and tracked worktrees
   are still present on disk. Exits 1 if any check fails. --json emits
   machine-readable output.`,
+  fresh: `Usage: mycadre fresh [--live <url>] [--base <branch>] [--remote <name>] [--no-pr] [--json]
+  Read-only check to run right before diffing, reviewing, pushing, opening a PR,
+  deploying or publishing. Asks the remote (git ls-remote, then fetches only the
+  commits it needs) rather than trusting local refs, and reports:
+    base   HEAD contains the remote default branch, or how far behind it is
+    local  your local default branch is not behind the remote
+    pr     the branch's PR (via gh) is open and its head matches HEAD
+    live   with --live, production's commit is not ahead of the remote
+  --live <url>     URL returning the deployed commit SHA, as plain text or JSON
+                   with a "sha", "commit" or "git_sha" field
+  --base <branch>  compare against this remote branch instead of the remote's HEAD
+  --remote <name>  remote to ask (default: the branch's upstream, else origin)
+  --no-pr          skip the PR check (otherwise a missing gh is "could not check")
+  --json           machine-readable output
+  Exit codes: 0 fresh, 1 stale, 2 could not check (offline, no remote, gh
+  missing). Exit 2 is never a pass. Never checks out, rebases or pushes.`,
 };
 
 // Flags each subcommand accepts (bare names, without the leading --). "help" is
@@ -86,6 +110,7 @@ const KNOWN_FLAGS: Record<string, string[]> = {
   rm: ["keep-branch", "force", "help"],
   clean: ["help"],
   doctor: ["json", "help"],
+  fresh: ["live", "base", "remote", "no-pr", "json", "help"],
 };
 
 // Map command aliases to the canonical name used for usage lookup.
@@ -131,7 +156,8 @@ function main(): void {
       if (!allowed.includes(key)) {
         console.error(`unknown option: --${key}`);
         console.error(`Run \`mycadre ${cmd} --help\` to see valid options.`);
-        process.exitCode = 1;
+        // For fresh, exit 1 means "stale"; a usage error is "could not check".
+        process.exitCode = cmd === "fresh" ? EXIT_UNCHECKED : 1;
         return;
       }
     }
@@ -166,6 +192,26 @@ function main(): void {
       case "doctor":
         runDoctor({ json: Boolean(flags.json) });
         break;
+      case "fresh": {
+        for (const key of ["live", "base", "remote"]) {
+          if (flags[key] === true) {
+            console.error(`--${key} needs a value`);
+            process.exitCode = EXIT_UNCHECKED;
+            return;
+          }
+        }
+        runFresh({
+          json: Boolean(flags.json),
+          live: flags.live as string | undefined,
+          base: flags.base as string | undefined,
+          remote: flags.remote as string | undefined,
+          noPr: Boolean(flags["no-pr"]),
+        }).catch((err) => {
+          console.error(`Error: ${(err as Error).message}`);
+          process.exitCode = EXIT_UNCHECKED;
+        });
+        break;
+      }
       case "--version":
       case "-v":
       case "version":

@@ -53,8 +53,53 @@ mycadre clean                # prune worktrees git already dropped
 | `mycadre remove <branch> [--keep-branch] [--force]` | Remove the worktree and (unless `--keep-branch`) delete the branch. |
 | `mycadre clean` | Prune git worktrees and drop stale tracking entries. |
 | `mycadre doctor [--json]` | Check that git, your repo, `mycadre.json`, `worktreeDir`, and tracked worktrees are all in a healthy state. Exits 1 if anything's wrong. |
+| `mycadre fresh [--live <url>] [--base <branch>] [--remote <name>] [--no-pr] [--json]` | Read-only check before you diff, review, push, open a PR, deploy or publish: asks the remote whether HEAD is built on its default branch, whether your local default branch is behind, and whether the branch's PR is still open at HEAD. Exit 0 fresh, 1 stale, 2 could not check. See [Is my branch fresh?](#is-my-branch-fresh). |
 | `mycadre --version` | Print the installed version (also `-v`). |
 | `mycadre --help` | Show usage help (also `-h`). |
+
+## Is my branch fresh?
+
+Parallel branches go stale quietly. Someone merges to `main` while you work, and
+your diff now shows their change reverted. A PR gets merged while you are still
+pushing to its branch, and the pushes go nowhere. Production gets hot-fixed from a
+laptop, and the next deploy from `main` rolls it back. `mycadre fresh` checks for
+all three, right before the moment it matters:
+
+```sh
+mycadre fresh                                   # before a diff, review, push or PR
+mycadre fresh --live https://example.com/version # before a deploy
+```
+
+```
+✗ base: HEAD is 3 commits behind origin/main (4d1c2ab) — a diff against it will show their changes reverted
+    4d1c2ab Fix the login redirect
+    9e0b7f1 Bump the API client
+    52aa0c3 Drop the old cache
+✓ local: local main matches origin/main
+✗ pr: PR #42 is ALREADY MERGED — pushing to 'feature/login' goes nowhere; start a new branch from main
+✓ live: production (52aa0c3) is 2 commits behind origin/main
+
+STALE — see ✗ lines above. Nothing was changed.
+```
+
+- **base** — is the remote's default branch an ancestor of HEAD? It asks the remote
+  with `git ls-remote` and fetches only the commits it needs, so an old local
+  `origin/main` can't make a stale branch look current.
+- **local** — is your local default branch behind the remote?
+- **pr** — via [`gh`](https://cli.github.com/), if the branch has a PR: is it still
+  open, and is its head in HEAD? Merged or closed PRs are flagged.
+- **live** — with `--live <url>`, fetches a URL that returns the deployed commit
+  (plain text, or JSON with a `sha`, `commit` or `git_sha` field) and says whether
+  production is equal to, behind, or **ahead of** the remote. Ahead means deploying
+  from the remote would revert it.
+
+Exit codes: `0` fresh, `1` stale, `2` could not check. A check that could not run
+(offline, no remote, `gh` missing or signed out, an unreadable `--live` response) is
+exit `2` and never reads as fresh. Pass `--no-pr` to skip the PR check on purpose.
+`--json` prints every check for scripts and agents.
+
+`fresh` never checks out, rebases, merges or pushes. The only thing it writes is the
+`git fetch` of commits it compares against, which updates remote-tracking refs.
 
 ## Configuration
 
