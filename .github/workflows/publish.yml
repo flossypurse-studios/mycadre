@@ -23,6 +23,10 @@ name: publish
 # (was npm@latest), so a moved tag or a bad npm release cannot ride along. Bump them
 # deliberately.
 #
+# packproof runs before publish: it packs this tree, installs the tarball into an
+# empty project and runs every bin and entry point, so a tarball that would break on
+# install stops the release here. Pinned like the actions above; bump deliberately.
+#
 # Trigger: push a tag matching v* (e.g. `git tag v0.1.7 && git push origin v0.1.7`),
 # or run manually via workflow_dispatch.
 
@@ -47,5 +51,6 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - run: npx --yes packproof@0.16.2
       - run: npm install -g npm@11.21.1
       - run: npm publish
