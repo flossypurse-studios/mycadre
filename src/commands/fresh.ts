@@ -67,9 +67,12 @@ function netGit(args: string[]): { ok: boolean; stdout: string; stderr: string }
   }
 }
 
-// git puts the useful part ("fatal: ...") on the last line.
-function lastLine(s: string): string {
-  return s.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "";
+// The useful part of a git error is its first "fatal:"/"error:" line; the
+// last line is often advice ("...and the repository exists.").
+function errorLine(s: string): string {
+  const lines = s.split("\n").map((l) => l.trim()).filter(Boolean);
+  const fatal = lines.find((l) => /^(fatal|error):/i.test(l));
+  return (fatal ?? lines.pop() ?? "").replace(/^(fatal|error):\s*/i, "");
 }
 
 function short(sha: string | null | undefined): string {
@@ -221,12 +224,12 @@ async function check(opts: FreshOptions): Promise<Report> {
   let remoteSha: string | null = null;
   if (defaultBranch) {
     const res = netGit(["ls-remote", remote, `refs/heads/${defaultBranch}`]);
-    if (!res.ok) return unchecked("base", `could not reach '${remote}': ${lastLine(res.stderr)}`);
+    if (!res.ok) return unchecked("base", `could not reach '${remote}': ${errorLine(res.stderr)}`);
     remoteSha = res.stdout.split(/\s+/)[0] || null;
     if (!remoteSha) return unchecked("base", `branch '${defaultBranch}' does not exist on '${remote}'`);
   } else {
     const res = netGit(["ls-remote", "--symref", remote, "HEAD"]);
-    if (!res.ok) return unchecked("base", `could not reach '${remote}': ${lastLine(res.stderr)}`);
+    if (!res.ok) return unchecked("base", `could not reach '${remote}': ${errorLine(res.stderr)}`);
     for (const line of res.stdout.split("\n")) {
       const sym = line.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD$/);
       if (sym) defaultBranch = sym[1];
@@ -247,7 +250,7 @@ async function check(opts: FreshOptions): Promise<Report> {
   if (!hasCommit(remoteSha)) {
     const res = netGit([...FETCH, remote, defaultBranch]);
     if (!res.ok || !hasCommit(remoteSha)) {
-      return unchecked("base", `could not fetch ${remoteName} (${short(remoteSha)}): ${lastLine(res.stderr) || "commit still missing"}`);
+      return unchecked("base", `could not fetch ${remoteName} (${short(remoteSha)}): ${errorLine(res.stderr) || "commit still missing"}`);
     }
   }
 
@@ -357,7 +360,7 @@ function checkPr(
       if (!slug) return { name, status: "skipped", detail: `'${remote}' is not a GitHub remote and gh is not installed` };
       return { name, status: "unchecked", detail: "not checked — gh is not installed (install it, or pass --no-pr)" };
     }
-    const msg = lastLine(e.stderr?.toString() ?? "") || "gh failed";
+    const msg = errorLine(e.stderr?.toString() ?? "") || "gh failed";
     if (!slug && /known GitHub host|not a git repository|no git remotes/i.test(msg)) {
       return { name, status: "skipped", detail: `'${remote}' is not a GitHub remote` };
     }
@@ -436,7 +439,7 @@ async function checkLive(url: string, remote: string, remoteName: string, remote
           detail: `production runs ${short(sha)}, which ${remote} does not have — deploying would replace work that was never pushed`,
         };
       }
-      return { name, status: "unchecked", data, detail: `not checked — could not fetch ${short(sha)} from ${remote}: ${lastLine(res.stderr)}` };
+      return { name, status: "unchecked", data, detail: `not checked — could not fetch ${short(sha)} from ${remote}: ${errorLine(res.stderr)}` };
     }
   }
   if (full === remoteSha) {
