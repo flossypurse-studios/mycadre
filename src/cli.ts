@@ -91,7 +91,8 @@ const SUBCOMMAND_USAGE: Record<string, string> = {
   --live <url>     URL returning the deployed commit SHA, as plain text or JSON
                    with a "sha", "commit" or "git_sha" field
   --base <branch>  compare against this remote branch instead of the remote's HEAD
-  --remote <name>  remote to ask (default: the branch's upstream, else origin)
+  --remote <name>  remote holding the default branch (default: origin, else the
+                   only remote; never a fork the branch happens to track)
   --no-pr          skip the PR check (otherwise a missing gh is "could not check")
   --json           machine-readable output
   Exit codes: 0 fresh, 1 stale, 2 could not check (offline, no remote, gh

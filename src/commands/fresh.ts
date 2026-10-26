@@ -38,9 +38,17 @@ interface Report {
   checks: Check[];
 }
 
-// Network git calls must never hang on a credential prompt, and must give up.
-const NET_ENV = { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" };
-const NET_TIMEOUT_MS = 30_000;
+// Network git calls must never hang on a credential or passphrase prompt, and must give up.
+const NET_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_TERMINAL_PROMPT: "0",
+  GCM_INTERACTIVE: "never",
+  GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes",
+};
+const NET_TIMEOUT_MS = 20_000;
+// The fetch is the one write fresh makes: keep it to objects + remote-tracking refs
+// (and FETCH_HEAD) — no tags, no submodules, no background gc or maintenance.
+const FETCH = ["-c", "gc.auto=0", "-c", "maintenance.auto=false", "fetch", "--quiet", "--no-tags", "--no-recurse-submodules"];
 const MISSING_SUBJECTS = 5;
 
 function netGit(args: string[]): { ok: boolean; stdout: string; stderr: string } {
@@ -85,21 +93,33 @@ function subjects(range: string): string[] {
   return out ? out.split("\n") : [];
 }
 
-/** Pick the remote: --remote, else the current branch's upstream remote, else origin, else the only one. */
-function pickRemote(explicit: string | undefined, branch: string | null): string | null {
-  const remotes = (tryGit(["remote"]) ?? "").split("\n").map((r) => r.trim()).filter(Boolean);
+function listRemotes(): string[] {
+  return (tryGit(["remote"]) ?? "").split("\n").map((r) => r.trim()).filter(Boolean);
+}
+
+/**
+ * Pick the remote that holds the default branch: --remote, else origin, else the
+ * only one. Deliberately NOT the current branch's upstream — a branch that tracks
+ * a fork would then be compared against the fork's (usually stale) main.
+ */
+function pickRemote(explicit: string | undefined, remotes: string[]): string | null {
   if (explicit) return remotes.includes(explicit) ? explicit : null;
-  if (branch) {
-    const up = tryGit(["config", `branch.${branch}.remote`]);
-    if (up && remotes.includes(up)) return up;
-  }
   if (remotes.includes("origin")) return "origin";
   return remotes.length === 1 ? remotes[0] : null;
 }
 
+/** The remote this branch pushes to: pushRemote, pushDefault, its upstream remote, else the base remote. */
+function pushRemoteFor(branch: string, base: string, remotes: string[]): string {
+  for (const key of [`branch.${branch}.pushRemote`, "remote.pushDefault", `branch.${branch}.remote`]) {
+    const r = tryGit(["config", key]);
+    if (r && remotes.includes(r)) return r;
+  }
+  return base;
+}
+
 /** owner/repo from a GitHub remote URL (raw config value, before insteadOf rewriting). */
 export function githubSlug(url: string): string | null {
-  const m = url.match(/github\.com[:/]+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i);
+  const m = url.match(/github\.com(?::\d+)?[:/]+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i);
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
@@ -117,11 +137,12 @@ export function parseLiveSha(body: string): string | null {
       return null;
     }
     if (isSha(json)) return json.trim().toLowerCase();
-    return null;
+    // An all-digit short SHA ("1234567") parses as a number: read it as text.
   } catch {
-    const token = text.split(/\s+/)[0] ?? "";
-    return isSha(token) ? token.toLowerCase() : null;
+    // not JSON: plain text
   }
+  const token = text.split(/\s+/)[0] ?? "";
+  return isSha(token) ? token.toLowerCase() : null;
 }
 
 /**
@@ -134,7 +155,7 @@ export function parseLiveSha(body: string): string | null {
  *
  * It never checks out, rebases, merges or pushes. The only write is a
  * `git fetch` of the commits it needs to compare against, which updates
- * remote-tracking refs only.
+ * remote-tracking refs and FETCH_HEAD and nothing else.
  */
 export async function runFresh(opts: FreshOptions = {}): Promise<void> {
   const report = await check(opts);
@@ -181,13 +202,16 @@ async function check(opts: FreshOptions): Promise<Report> {
   const symbolic = tryGit(["symbolic-ref", "--quiet", "--short", "HEAD"]);
   report.branch = symbolic;
 
-  const remote = pickRemote(opts.remote, symbolic);
+  const remotes = listRemotes();
+  const remote = pickRemote(opts.remote, remotes);
   if (!remote) {
     return unchecked(
       "remote",
       opts.remote
         ? `no remote named '${opts.remote}'`
-        : "no remote to check against (add one, or pass --remote <name>)"
+        : remotes.length
+          ? `no 'origin' among remotes ${remotes.join(", ")} — pass --remote <name>`
+          : "no remote to check against (add one, or pass --remote <name>)"
     );
   }
   report.remote = remote;
@@ -221,7 +245,7 @@ async function check(opts: FreshOptions): Promise<Report> {
 
   const trackingBefore = tryGit(["rev-parse", "--verify", "--quiet", `refs/remotes/${remoteName}`]);
   if (!hasCommit(remoteSha)) {
-    const res = netGit(["fetch", "--quiet", "--no-tags", remote, defaultBranch]);
+    const res = netGit([...FETCH, remote, defaultBranch]);
     if (!res.ok || !hasCommit(remoteSha)) {
       return unchecked("base", `could not fetch ${remoteName} (${short(remoteSha)}): ${lastLine(res.stderr) || "commit still missing"}`);
     }
@@ -280,7 +304,7 @@ async function check(opts: FreshOptions): Promise<Report> {
   }
 
   // 3. The branch's pull request.
-  checks.push(checkPr(opts, remote, symbolic, defaultBranch, head));
+  checks.push(checkPr(opts, remote, remotes, symbolic, defaultBranch, head));
 
   // 4. Production.
   if (opts.live) checks.push(await checkLive(opts.live, remote, remoteName, remoteSha));
@@ -291,6 +315,7 @@ async function check(opts: FreshOptions): Promise<Report> {
 function checkPr(
   opts: FreshOptions,
   remote: string,
+  remotes: string[],
   branch: string | null,
   defaultBranch: string,
   head: string
@@ -300,18 +325,21 @@ function checkPr(
   if (!branch) return { name, status: "skipped", detail: "detached HEAD — no branch to look up a PR for" };
   if (branch === defaultBranch) return { name, status: "skipped", detail: `on ${defaultBranch} itself — no PR to check` };
 
-  const url = tryGit(["config", `remote.${remote}.url`]) ?? "";
-  const slug = githubSlug(url);
-  // The PR's head branch is the upstream name if this branch tracks one on the remote.
+  // PRs live on the base remote's repo; the head may come from a fork we push to.
+  const slug = githubSlug(tryGit(["config", `remote.${remote}.url`]) ?? "");
+  const pushRemote = pushRemoteFor(branch, remote, remotes);
+  const pushSlug = githubSlug(tryGit(["config", `remote.${pushRemote}.url`]) ?? "");
+  const headOwner = pushSlug ? pushSlug.split("/")[0].toLowerCase() : null;
+  // The PR's head branch is the upstream name if this branch tracks one on its push remote.
   const merge = tryGit(["config", `branch.${branch}.merge`]);
   const upstreamRemote = tryGit(["config", `branch.${branch}.remote`]);
   // A branch cut from origin/main often tracks origin/main itself; that is not its PR head.
-  const upstreamBranch = merge && upstreamRemote === remote ? merge.replace(/^refs\/heads\//, "") : null;
+  const upstreamBranch = merge && upstreamRemote === pushRemote ? merge.replace(/^refs\/heads\//, "") : null;
   const headBranch = upstreamBranch && upstreamBranch !== defaultBranch ? upstreamBranch : branch;
 
   const args = [
-    "pr", "list", "--head", headBranch, "--state", "all", "--limit", "10",
-    "--json", "number,state,headRefOid,url",
+    "pr", "list", "--head", headBranch, "--state", "all", "--limit", "30",
+    "--json", "number,state,headRefOid,url,headRepositoryOwner",
   ];
   if (slug) args.push("--repo", slug);
 
@@ -336,12 +364,16 @@ function checkPr(
     return { name, status: "unchecked", detail: `not checked — gh: ${msg} (run gh auth login, or pass --no-pr)` };
   }
 
-  let prs: Array<{ number: number; state: string; headRefOid: string; url: string }>;
+  let prs: Array<{ number: number; state: string; headRefOid: string; url: string; headRepositoryOwner?: { login?: string } }>;
   try {
     prs = JSON.parse(out);
     if (!Array.isArray(prs)) throw new Error("not an array");
   } catch {
     return { name, status: "unchecked", detail: "not checked — could not read gh output" };
+  }
+  // `--head` matches the branch name in ANY fork; keep only PRs from the repo we push to.
+  if (headOwner) {
+    prs = prs.filter((p) => !p.headRepositoryOwner?.login || p.headRepositoryOwner.login.toLowerCase() === headOwner);
   }
   if (prs.length === 0) return { name, status: "ok", detail: `no PR for '${headBranch}' yet` };
 
@@ -387,16 +419,25 @@ async function checkLive(url: string, remote: string, remoteName: string, remote
   if (!sha) return { name, status: "unchecked", detail: `not checked — no commit SHA in the response from ${url}` };
 
   let full = tryGit(["rev-parse", "--verify", "--quiet", `${sha}^{commit}`]);
-  if (!full && sha.length === 40) {
-    netGit(["fetch", "--quiet", "--no-tags", remote, sha]);
-    full = tryGit(["rev-parse", "--verify", "--quiet", `${sha}^{commit}`]);
-  }
   const data: Record<string, unknown> = { sha: full ?? sha };
-  if (!full) {
+  if (!full && sha.length < 40) {
     return {
-      name, status: "stale", data,
-      detail: `production runs ${short(sha)}, which ${remote} does not have — deploying would replace work that was never pushed`,
+      name, status: "unchecked", data,
+      detail: `not checked — production reports short SHA ${sha}, which is not in ${remoteName} here; serve the full 40-character SHA`,
     };
+  }
+  if (!full) {
+    const res = netGit([...FETCH, remote, sha]);
+    full = tryGit(["rev-parse", "--verify", "--quiet", `${sha}^{commit}`]);
+    if (!full) {
+      if (/not our ref|couldn't find remote ref|no such remote ref|unadvertised object/i.test(res.stderr)) {
+        return {
+          name, status: "stale", data,
+          detail: `production runs ${short(sha)}, which ${remote} does not have — deploying would replace work that was never pushed`,
+        };
+      }
+      return { name, status: "unchecked", data, detail: `not checked — could not fetch ${short(sha)} from ${remote}: ${lastLine(res.stderr)}` };
+    }
   }
   if (full === remoteSha) {
     return { name, status: "ok", data: { ...data, relation: "equal" }, detail: `production matches ${remoteName} (${short(full)})` };

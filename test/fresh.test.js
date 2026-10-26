@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync, symlinkSync, chmodSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.resolve(__dirname, "../dist/cli.js");
@@ -419,4 +419,85 @@ test("fresh --live: equal, behind, ahead, unknown, JSON fields, and unreadable r
   } finally {
     ctx.cleanup();
   }
+});
+
+test("fresh: a branch tracking a fork is still compared against origin's default branch", () => {
+  const ctx = setup();
+  try {
+    const fork = path.join(ctx.dir, "fork.git");
+    g(["clone", "-q", "--bare", ctx.remote, fork]);
+    g(["remote", "add", "fork", fork], ctx.work);
+    g(["checkout", "-q", "-b", "feat"], ctx.work);
+    commit(ctx.work, "f.txt", "feature");
+    g(["push", "-q", "-u", "fork", "feat"], ctx.work);
+    advanceRemote(ctx, ["landed on origin"]); // the fork's main stays behind
+    const r = freshJson(ctx);
+    assert.equal(r.json.remote, "origin");
+    assert.equal(byName(r.json, "base").status, "stale", r.out);
+    assert.equal(r.status, 1);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("fresh: PRs are looked up on the base repo and filtered to the repo we push to", () => {
+  const ctx = setup({ githubUrl: true });
+  try {
+    fakeGh(ctx);
+    // Push to a fork (me/widget); the PR lives on acme/widget.
+    const forkUrl = "https://github.com/me/widget.git";
+    const fork = path.join(ctx.dir, "fork.git");
+    g(["clone", "-q", "--bare", ctx.remote, fork]);
+    g(["remote", "add", "fork", forkUrl], ctx.work);
+    g(["config", `url.${fork}.insteadOf`, forkUrl], ctx.work);
+    g(["checkout", "-q", "-b", "patch-1"], ctx.work);
+    const pushed = commit(ctx.work, "p.txt", "patch");
+    g(["push", "-q", "-u", "fork", "patch-1"], ctx.work);
+
+    const prs = JSON.stringify([
+      { number: 4, state: "MERGED", headRefOid: "1".repeat(40), url: "u", headRepositoryOwner: { login: "stranger" } },
+      { number: 8, state: "OPEN", headRefOid: pushed, url: "u", headRepositoryOwner: { login: "Me" } },
+    ]);
+    let r = freshJson(ctx, [], { env: { FAKE_GH_OUT: prs } });
+    assert.equal(r.status, 0, r.out);
+    assert.equal(byName(r.json, "pr").data.number, 8);
+    assert.match(readFileSync(path.join(ctx.dir, "gh-args.log"), "utf8"), /--head patch-1 .*--repo acme\/widget/);
+
+    // Only a stranger's same-named PR exists: that is not ours.
+    const stranger = JSON.stringify([
+      { number: 4, state: "MERGED", headRefOid: "1".repeat(40), url: "u", headRepositoryOwner: { login: "stranger" } },
+    ]);
+    r = freshJson(ctx, [], { env: { FAKE_GH_OUT: stranger } });
+    assert.equal(r.status, 0, r.out);
+    assert.match(byName(r.json, "pr").detail, /no PR for 'patch-1' yet/);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("fresh --live: a short SHA we can't resolve is 'could not check', not a claim about production", () => {
+  const ctx = setup();
+  try {
+    const r = freshJson(ctx, ["--live", "data:text/plain,1234567"]);
+    assert.equal(r.status, 2, r.out);
+    assert.match(byName(r.json, "live").detail, /short SHA 1234567/);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("fresh: parseLiveSha and githubSlug edge cases", async () => {
+  const { parseLiveSha, githubSlug } = await import(pathToFileURL(path.resolve(__dirname, "../dist/commands/fresh.js")).href);
+  assert.equal(parseLiveSha("1234567"), "1234567", "all-digit short SHA parses as JSON number");
+  assert.equal(parseLiveSha("1234e56\n"), "1234e56", "exponent-looking SHA");
+  assert.equal(parseLiveSha('"ABCDEF0"'), "abcdef0");
+  assert.equal(parseLiveSha('{"sha":"abcdef0123"}'), "abcdef0123");
+  assert.equal(parseLiveSha('{"version":"1.2.3"}'), null);
+  assert.equal(parseLiveSha("deadbeef built 2026-01-01"), "deadbeef");
+  assert.equal(parseLiveSha("hello"), null);
+  assert.equal(parseLiveSha(""), null);
+  assert.equal(githubSlug("git@github.com:acme/widget.git"), "acme/widget");
+  assert.equal(githubSlug("https://github.com/acme/widget"), "acme/widget");
+  assert.equal(githubSlug("ssh://git@github.com:22/acme/widget.git"), "acme/widget");
+  assert.equal(githubSlug("https://gitlab.com/acme/widget.git"), null);
 });

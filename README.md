@@ -98,8 +98,12 @@ Exit codes: `0` fresh, `1` stale, `2` could not check. A check that could not ru
 exit `2` and never reads as fresh. Pass `--no-pr` to skip the PR check on purpose.
 `--json` prints every check for scripts and agents.
 
+It compares against `origin` (or the only remote; `--remote <name>` to choose), even
+when your branch tracks a fork, and looks the PR up on that repo.
+
 `fresh` never checks out, rebases, merges or pushes. The only thing it writes is the
-`git fetch` of commits it compares against, which updates remote-tracking refs.
+`git fetch` of commits it compares against, which updates remote-tracking refs and
+`FETCH_HEAD` (no tags, no submodules, no background gc).
 
 ## Configuration
 
