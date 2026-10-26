@@ -509,7 +509,7 @@ window.flossyKeepUtm = function (type, payload) {
   <section id="commands">
     <div class="wrap">
       <h2>Commands</h2>
-      <p class="sub">Six commands, that's the whole surface.</p>
+      <p class="sub">Seven commands, that's the whole surface.</p>
       <div class="table-scroll">
         <table>
           <thead><tr><th>Command</th><th>What it does</th></tr></thead>
@@ -520,9 +520,31 @@ window.flossyKeepUtm = function (type, payload) {
             <tr><td><code>mycadre remove &lt;branch&gt; [--keep-branch] [--force]</code></td><td class="desc">Remove the worktree and (unless <code>--keep-branch</code>) delete the branch.</td></tr>
             <tr><td><code>mycadre clean</code></td><td class="desc">Prune git worktrees and drop stale tracking entries.</td></tr>
             <tr><td><code>mycadre doctor [--json]</code></td><td class="desc">Check that git, your repo, <code>mycadre.json</code>, <code>worktreeDir</code>, and tracked worktrees are all in a healthy state. Exits 1 if anything's wrong.</td></tr>
+            <tr><td><code>mycadre fresh [--live &lt;url&gt;]</code></td><td class="desc">Read-only check before a diff, review, push, PR, deploy or publish: is HEAD built on the remote's default branch, is local <code>main</code> behind, is the branch's PR still open at HEAD, is production ahead. Exit 0 fresh, 1 stale, 2 could not check. <a href="#fresh">More</a>.</td></tr>
           </tbody>
         </table>
       </div>
+    </div>
+  </section>
+
+  <section id="fresh">
+    <div class="wrap">
+      <h2>Is my branch fresh?</h2>
+      <p class="sub">Parallel branches go stale quietly. Someone merges to <code>main</code> while you work, and your diff shows their change reverted. A PR is merged while you're still pushing to its branch, and the pushes go nowhere. Production is hot-fixed from a laptop, and the next deploy rolls it back. Run <code>mycadre fresh</code> right before the moment it matters.</p>
+<pre class="block"><span class="prompt">$</span> mycadre fresh --live https://example.com/version
+✗ base: HEAD is 3 commits behind origin/main (4d1c2ab)
+    4d1c2ab Fix the login redirect
+    9e0b7f1 Bump the API client
+    52aa0c3 Drop the old cache
+✓ local: local main matches origin/main
+✗ pr: PR #42 is ALREADY MERGED — pushing to 'feature/login' goes nowhere
+✓ live: production (52aa0c3) is 2 commits behind origin/main
+
+STALE — see ✗ lines above. Nothing was changed.</pre>
+      <p class="step"><b>base</b> — asks the remote with <code>git ls-remote</code>, so an old local <code>origin/main</code> can't make a stale branch look current.</p>
+      <p class="step"><b>pr</b> — uses <code>gh</code> to check the branch's PR is still open and its head is in HEAD.</p>
+      <p class="step"><b>live</b> — with <code>--live &lt;url&gt;</code>, reads the deployed commit (plain text, or JSON with <code>sha</code>, <code>commit</code> or <code>git_sha</code>) and flags production that is ahead of the remote.</p>
+      <p class="sub" style="margin-top:1.5rem">Exit 0 fresh, 1 stale, 2 could not check. Offline, no remote, or <code>gh</code> missing is exit 2 and never reads as fresh; <code>--no-pr</code> skips the PR check on purpose. <code>--json</code> for scripts and agents. It never checks out, rebases or pushes.</p>
     </div>
   </section>
 
