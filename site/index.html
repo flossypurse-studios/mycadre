@@ -404,7 +404,24 @@ footer b { color: var(--fg); font-weight: 500; }
 }
 .site-head nav a:hover, .nav-links a:hover { border-bottom-color: var(--accent); }
 </style>
-<script defer src="https://analytics.flossypurse.studio/script.js" data-website-id="8e0f0e63-e666-4b1d-94bd-711397eb878c" data-domains="mycadre.dev" data-exclude-search="true" data-exclude-hash="true" data-do-not-track="true"></script>
+<script>
+window.flossyKeepUtm = function (type, payload) {
+  try {
+    var allow = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+    var u = new URL(payload.url, location.origin);
+    var kept = new URLSearchParams();
+    u.searchParams.forEach(function (v, k) {
+      if (allow.indexOf(k) !== -1) kept.append(k, v);
+    });
+    var qs = kept.toString();
+    payload.url = u.pathname + (qs ? '?' + qs : '');
+  } catch (e) {
+    try { payload.url = new URL(payload.url, location.origin).pathname; } catch (e2) {}
+  }
+  return payload;
+};
+</script>
+<script defer src="https://analytics.flossypurse.studio/script.js" data-website-id="8e0f0e63-e666-4b1d-94bd-711397eb878c" data-domains="mycadre.dev" data-before-send="flossyKeepUtm" data-exclude-hash="true" data-do-not-track="true"></script>
 </head>
 <body>
 <header class="site-head">
