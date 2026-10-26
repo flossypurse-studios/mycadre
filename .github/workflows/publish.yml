@@ -18,14 +18,17 @@ name: publish
 # token auth on the upload itself, which the registry reports as a confusing E404.
 # Provenance is automatic under trusted publishing, so no --provenance flag.
 #
-# Pinned on purpose: this job holds id-token: write, so whatever it runs can publish
+# Pinned on purpose: the publish job holds id-token: write, so whatever it runs can publish
 # as this package. The actions are pinned to commit SHAs and npm to an exact version
 # (was npm@latest), so a moved tag or a bad npm release cannot ride along. Bump them
 # deliberately.
 #
 # packproof runs before publish: it packs this tree, installs the tarball into an
 # empty project and runs every bin and entry point, so a tarball that would break on
-# install stops the release here. Pinned like the actions above; bump deliberately.
+# install stops the release. It runs in a separate verify job with no publish rights,
+# because it installs the package's dependencies fresh from the registry; only the
+# publish job, which needs verify, can mint the OIDC token. packproof is pinned to an
+# exact version like npm below; bump deliberately.
 #
 # Trigger: push a tag matching v* (e.g. `git tag v0.1.7 && git push origin v0.1.7`),
 # or run manually via workflow_dispatch.
@@ -37,10 +40,9 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -51,6 +53,22 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - run: npm install -g npm@11.21.1
       - run: npx --yes packproof@0.16.2
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run build
       - run: npm install -g npm@11.21.1
       - run: npm publish
