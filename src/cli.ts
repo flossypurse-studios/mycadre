@@ -7,6 +7,7 @@ import { runRemove } from "./commands/remove.js";
 import { runClean } from "./commands/clean.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runFresh, EXIT_UNCHECKED } from "./commands/fresh.js";
+import { runCommit, DEFAULT_LOCK_TIMEOUT_S } from "./commands/commit.js";
 
 const HELP = `mycadre — git worktrees that are ready to work
 
@@ -35,6 +36,13 @@ Usage:
                                       is local main behind, is the branch's PR
                                       still open at HEAD, is production ahead.
                                       Exit 0 fresh, 1 stale, 2 could not check.
+  mycadre commit -m <message> [--dry-run] [--lock-timeout <s>] [--json] <path>...
+                                      Commit exactly the named paths in a
+                                      checkout other agents share. Anything
+                                      else staged stays staged and out of the
+                                      commit. Waits out a held index.lock.
+                                      Exit 0 committed, 1 refused or failed,
+                                      2 a lock was still held.
   mycadre --version                  Print the installed version
   mycadre --help                     Show this help
 
@@ -97,6 +105,22 @@ const SUBCOMMAND_USAGE: Record<string, string> = {
   --json           machine-readable output
   Exit codes: 0 fresh, 1 stale, 2 could not check (offline, no remote, gh
   missing). Exit 2 is never a pass. Never checks out, rebases or pushes.`,
+  commit: `Usage: mycadre commit -m <message> [--dry-run] [--lock-timeout <s>] [--json] [--] <path>...
+  Commit exactly the named paths (adds, changes, deletions and renames under
+  them) and nothing else, in a checkout other agents are using too. Anything
+  else already staged in the index stays staged and is not in the commit.
+  Built on \`git commit --only\`: hooks run as normal, never --no-verify. The
+  parent is whatever HEAD is when git commits, so a commit landing meanwhile
+  is kept, not reverted.
+  -m, --message <msg>   the commit message (required)
+  --dry-run             show what would be committed; write nothing
+  --lock-timeout <s>    how long to wait for another process's index.lock
+                        (default ${DEFAULT_LOCK_TIMEOUT_S}); it is never deleted
+  --json                machine-readable output
+  Refused, with nothing written: no paths, a path that matches nothing, has no
+  change against HEAD, is ignored, is outside the repo, or is the whole repo.
+  Exit codes: 0 committed (or would commit), 1 refused or the commit failed
+  (e.g. a hook said no), 2 a lock was still held when the wait ran out.`,
 };
 
 // Flags each subcommand accepts (bare names, without the leading --). "help" is
@@ -112,6 +136,7 @@ const KNOWN_FLAGS: Record<string, string[]> = {
   clean: ["help"],
   doctor: ["json", "help"],
   fresh: ["live", "base", "remote", "no-pr", "json", "help"],
+  commit: ["message", "dry-run", "lock-timeout", "json", "help"],
 };
 
 // Map command aliases to the canonical name used for usage lookup.
@@ -138,9 +163,38 @@ function parseFlags(args: string[]): { positional: string[]; flags: Record<strin
   return { positional, flags };
 }
 
+/**
+ * `commit` takes a single-dash -m, a message that may itself start with "--",
+ * and paths after "--", so it gets its own parse. Flag values are always the
+ * next argument.
+ */
+function parseCommitArgs(args: string[]): { positional: string[]; flags: Record<string, string | boolean>; error?: string } {
+  const positional: string[] = [];
+  const flags: Record<string, string | boolean> = {};
+  const takesValue = new Set(["message", "lock-timeout"]);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") {
+      positional.push(...args.slice(i + 1));
+      break;
+    }
+    const key = arg === "-m" ? "message" : arg === "-h" ? "help" : arg.startsWith("--") ? arg.slice(2) : null;
+    if (key === null) {
+      positional.push(arg);
+    } else if (takesValue.has(key)) {
+      if (i + 1 >= args.length) return { positional, flags, error: `--${key} needs a value` };
+      flags[key] = args[++i];
+    } else {
+      flags[key] = true;
+    }
+  }
+  return { positional, flags };
+}
+
 function main(): void {
   const [, , cmd, ...rest] = process.argv;
-  const { positional, flags } = parseFlags(rest);
+  const parsed = cmd === "commit" ? parseCommitArgs(rest) : parseFlags(rest);
+  const { positional, flags } = parsed;
 
   // For real subcommands (not the top-level help/version), `--help`/`-h` prints
   // the subcommand usage to STDOUT and exits 0 (issue #8), and any flag that the
@@ -161,6 +215,11 @@ function main(): void {
         process.exitCode = cmd === "fresh" ? EXIT_UNCHECKED : 1;
         return;
       }
+    }
+    if ("error" in parsed && parsed.error) {
+      console.error(parsed.error);
+      process.exitCode = 1;
+      return;
     }
   }
 
@@ -210,6 +269,25 @@ function main(): void {
         }).catch((err) => {
           console.error(`Error: ${(err as Error).message}`);
           process.exitCode = EXIT_UNCHECKED;
+        });
+        break;
+      }
+      case "commit": {
+        let lockTimeout: number | undefined;
+        if (flags["lock-timeout"] !== undefined) {
+          lockTimeout = Number(flags["lock-timeout"]);
+          if (!Number.isFinite(lockTimeout) || lockTimeout < 0) {
+            console.error("--lock-timeout must be a number of seconds, 0 or more");
+            process.exitCode = 1;
+            return;
+          }
+        }
+        runCommit({
+          message: flags.message as string | undefined,
+          paths: positional,
+          json: Boolean(flags.json),
+          dryRun: Boolean(flags["dry-run"]),
+          lockTimeout,
         });
         break;
       }
