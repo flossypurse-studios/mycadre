@@ -127,9 +127,12 @@ mycadre commit -m "Drop the old cache" --dry-run src/cache/   # show, write noth
 4d1c2ab8e1f0c9a7b3d2e6f5a4c3b2a1908f7e6d
 ```
 
-- **Only your paths.** Adds, changes, deletions and renames under the paths you
-  name. Anything else already staged stays staged, exactly as it was, and is not in
-  the commit. Paths are required; there is no "commit everything" mode.
+- **Only your paths — but a directory means everything under it.** Naming a file
+  commits only that file, and anything else already staged stays staged, exactly
+  as it was. Naming a directory commits every add, change, deletion and rename
+  under it, including a file another agent staged there — that's the same as
+  plain `git add <dir>`. Name files when you want that isolation, or check first
+  with `--dry-run`. Paths are required; there is no "commit everything" mode.
 - **Refuses before writing.** A path that matches nothing, has no change against
   HEAD, is ignored, or is outside the repo is exit `1` with nothing changed.
 - **Waits for locks.** If another process holds `index.lock`, it retries with

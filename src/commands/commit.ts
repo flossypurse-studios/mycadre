@@ -109,7 +109,7 @@ function parseNameStatus(out: string): FileChange[] {
 }
 
 /** Real path of the longest existing prefix of `p`, with the rest appended. */
-function realish(p: string): string {
+function realDir(p: string): string {
   let head = p;
   const tail: string[] = [];
   for (;;) {
@@ -122,6 +122,21 @@ function realish(p: string): string {
       head = parent;
     }
   }
+}
+
+/**
+ * Resolve `p` the way plain `git commit <path>` does: real, except the final
+ * path component is never followed even if it is itself a symlink — that
+ * component is the thing named and committed, not whatever it points to. If a
+ * symlink shows up earlier in the path (a directory the final component sits
+ * inside), the path goes beyond a symbolic link the same way git refuses to,
+ * so `beyondSymlink` comes back true instead of silently resolving through it.
+ */
+function realishPath(p: string): { real: string; beyondSymlink: boolean } {
+  const dir = path.dirname(p);
+  const base = path.basename(p);
+  const realParent = realDir(dir);
+  return { real: path.join(realParent, base), beyondSymlink: realParent !== dir };
 }
 
 /**
@@ -155,7 +170,7 @@ function commit(opts: CommitOptions): Report {
 
   const top = run(["rev-parse", "--show-toplevel"], cwd);
   if (!top.ok) return refuse("not inside a git working tree");
-  const root = realish(top.stdout.trim());
+  const root = realDir(top.stdout.trim());
   const head = run(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], root);
   if (!head.ok) return refuse("HEAD has no commits yet — make the first commit with git");
   const startHead = head.stdout.trim();
@@ -164,7 +179,9 @@ function commit(opts: CommitOptions): Report {
   // Repo-relative paths. Outside the repo, inside .git, or the whole repo: refused.
   const rel: string[] = [];
   for (const p of opts.paths) {
-    const r = path.relative(root, realish(path.resolve(cwd, p)));
+    const { real, beyondSymlink } = realishPath(path.resolve(cwd, p));
+    if (beyondSymlink) return refuse(`'${p}' is beyond a symbolic link — name the real path`);
+    const r = path.relative(root, real);
     if (r.startsWith("..") || path.isAbsolute(r)) return refuse(`'${p}' is outside the repository (${root})`);
     if (r === "") return refuse(`'${p}' is the whole repository — name the files or directories you changed`);
     if (r === ".git" || r.startsWith(`.git${path.sep}`)) return refuse(`'${p}' is inside .git`);

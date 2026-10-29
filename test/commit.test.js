@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync, chmodSync, unlinkSync, renameSync, realpathSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync, chmodSync, unlinkSync, renameSync, realpathSync, symlinkSync, readlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -244,6 +244,63 @@ test("commit: paths are taken literally and relative to the current directory", 
     const r = { json: JSON.parse(res.stdout) };
     assert.deepEqual(changed(ctx.repo, r.json.sha), ["A --weird.txt", "A src/*.txt"]);
     assert.equal(g(["log", "-1", "--format=%s"], ctx.repo), "--looks-like-a-flag");
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("commit: re-pointing a tracked symlink is a real change against HEAD, not resolved to its target", () => {
+  const ctx = setup();
+  try {
+    symlinkSync("a.txt", path.join(ctx.repo, "link.txt"));
+    g(["add", "link.txt"], ctx.repo);
+    g(["commit", "-q", "-m", "add link"], ctx.repo);
+    const before = g(["rev-parse", "HEAD"], ctx.repo);
+
+    unlinkSync(path.join(ctx.repo, "link.txt"));
+    symlinkSync("b.txt", path.join(ctx.repo, "link.txt"));
+
+    const r = mcJson(ctx, ["-m", "repoint", "link.txt"]);
+    assert.equal(r.status, 0, r.out);
+    assert.equal(r.json.result, "committed");
+    assert.notEqual(r.json.sha, before);
+    assert.deepEqual(changed(ctx.repo, r.json.sha), ["M link.txt"]);
+    assert.equal(readlinkSync(path.join(ctx.repo, "link.txt")), "b.txt");
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("commit: a new symlink is committed as the link itself, even when its target is outside the repository", () => {
+  const ctx = setup();
+  try {
+    symlinkSync("/tmp", path.join(ctx.repo, "outlink"));
+    const r = mcJson(ctx, ["-m", "add outlink", "outlink"]);
+    assert.equal(r.status, 0, r.out);
+    assert.equal(r.json.result, "committed");
+    assert.deepEqual(changed(ctx.repo, r.json.sha), ["A outlink"]);
+    assert.equal(readlinkSync(path.join(ctx.repo, "outlink")), "/tmp");
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("commit: a path through a symlinked directory refuses like plain git, and writes nothing", () => {
+  const ctx = setup();
+  try {
+    mkdirSync(path.join(ctx.repo, "real"));
+    write(ctx.repo, "real/a.txt", "x\n");
+    symlinkSync("real", path.join(ctx.repo, "alias"));
+    g(["add", "real", "alias"], ctx.repo);
+    g(["commit", "-q", "-m", "add alias"], ctx.repo);
+
+    write(ctx.repo, "real/a.txt", "changed\n");
+    const before = snapshot(ctx.repo);
+
+    const r = mc(ctx, ["-m", "x", "alias/a.txt"]);
+    assert.equal(r.status, 1, r.out);
+    assert.match(r.out, /beyond a symbolic link/);
+    assert.deepEqual(snapshot(ctx.repo), before);
   } finally {
     ctx.cleanup();
   }
