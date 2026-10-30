@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -108,13 +108,17 @@ function parseNameStatus(out: string): FileChange[] {
   return files;
 }
 
-/** Real path of the longest existing prefix of `p`, with the rest appended. */
+/**
+ * Real path of the longest existing prefix of `p`, with the rest appended. The
+ * native realpath also gives each existing component its on-disk case, so on a
+ * case-insensitive volume `SRC/f.txt` comes back as the tracked `src/f.txt`.
+ */
 function realDir(p: string): string {
   let head = p;
   const tail: string[] = [];
   for (;;) {
     try {
-      return path.join(realpathSync(head), ...tail.reverse());
+      return path.join(realpathSync.native(head), ...tail.reverse());
     } catch {
       const parent = path.dirname(head);
       if (parent === head) return p;
@@ -124,19 +128,67 @@ function realDir(p: string): string {
   }
 }
 
+function realOrNull(p: string): string | null {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return null;
+  }
+}
+
+function isSymlink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/** `base` as it is spelled on disk in `dir`, when the volume matched it ignoring case. */
+function diskCase(dir: string, base: string): string {
+  let entries: string[];
+  let want: number;
+  try {
+    entries = readdirSync(dir);
+    if (entries.includes(base)) return base;
+    want = lstatSync(path.join(dir, base)).ino;
+  } catch {
+    return base;
+  }
+  const same = entries.filter((e) => e.toLowerCase() === base.toLowerCase() && lstatSync(path.join(dir, e)).ino === want);
+  return same.length === 1 ? same[0] : base;
+}
+
 /**
  * Resolve `p` the way plain `git commit <path>` does: real, except the final
  * path component is never followed even if it is itself a symlink — that
  * component is the thing named and committed, not whatever it points to. If a
- * symlink shows up earlier in the path (a directory the final component sits
- * inside), the path goes beyond a symbolic link the same way git refuses to,
- * so `beyondSymlink` comes back true instead of silently resolving through it.
+ * symlink inside the worktree shows up earlier in the path (a directory the
+ * final component sits inside), the path goes beyond a symbolic link the same
+ * way git refuses to, so `beyondSymlink` comes back true instead of silently
+ * resolving through it. Symlinks above the worktree (/var -> /private/var, a
+ * link to the repo root, a cwd reached through one) are only how the path gets
+ * to the repo, and git accepts them, so they are resolved, not refused.
  */
-function realishPath(p: string): { real: string; beyondSymlink: boolean } {
+function realishPath(p: string, root: string): { real: string; beyondSymlink: boolean } {
   const dir = path.dirname(p);
   const base = path.basename(p);
+  // Where the path enters the worktree: its shallowest ancestor that is the repo root.
+  const ancestors: string[] = [];
+  for (let a = dir; ; a = path.dirname(a)) {
+    ancestors.push(a);
+    if (path.dirname(a) === a) break;
+  }
+  const entry = ancestors.reverse().find((a) => realOrNull(a) === root);
+  if (entry !== undefined) {
+    let cur = entry;
+    for (const c of path.relative(entry, dir).split(path.sep).filter(Boolean)) {
+      cur = path.join(cur, c);
+      if (isSymlink(cur)) return { real: p, beyondSymlink: true };
+    }
+  }
   const realParent = realDir(dir);
-  return { real: path.join(realParent, base), beyondSymlink: realParent !== dir };
+  return { real: path.join(realParent, diskCase(realParent, base)), beyondSymlink: false };
 }
 
 /**
@@ -179,7 +231,7 @@ function commit(opts: CommitOptions): Report {
   // Repo-relative paths. Outside the repo, inside .git, or the whole repo: refused.
   const rel: string[] = [];
   for (const p of opts.paths) {
-    const { real, beyondSymlink } = realishPath(path.resolve(cwd, p));
+    const { real, beyondSymlink } = realishPath(path.resolve(cwd, p), root);
     if (beyondSymlink) return refuse(`'${p}' is beyond a symbolic link — name the real path`);
     const r = path.relative(root, real);
     if (r.startsWith("..") || path.isAbsolute(r)) return refuse(`'${p}' is outside the repository (${root})`);
@@ -195,16 +247,24 @@ function commit(opts: CommitOptions): Report {
   try {
     const read = run(["read-tree", "HEAD"], root, tmpEnv);
     if (!read.ok) return refuse(`could not read HEAD: ${errorLine(read.stderr)}`);
+    // A tracked path that matches `r` only when case is ignored (a file not on
+    // disk, so its case could not be read from there), as a clause for a refusal.
+    const caseHint = (r: string): string => {
+      const want = r.toLowerCase();
+      const tracked = run(["ls-files", "-z"], root, tmpEnv).stdout.split("\0");
+      const hit = tracked.find((t) => t !== r && (t.toLowerCase() === want || t.toLowerCase().startsWith(`${want}/`)));
+      return hit ? ` — the case doesn't match the tracked path \`${hit.slice(0, r.length)}\`` : "";
+    };
     for (let i = 0; i < rel.length; i++) {
       const added = run(["add", "-A", "--", rel[i]], root, tmpEnv);
       if (!added.ok) {
-        if (/did not match any files/i.test(added.stderr)) return refuse(`'${opts.paths[i]}' matches nothing in the working tree or HEAD`);
+        if (/did not match any files/i.test(added.stderr)) return refuse(`'${opts.paths[i]}' matches nothing in the working tree or HEAD${caseHint(rel[i])}`);
         if (/ignored by one of your \.gitignore/i.test(added.stderr)) return refuse(`'${opts.paths[i]}' is ignored by .gitignore`);
         return refuse(`could not read '${opts.paths[i]}': ${errorLine(added.stderr)}`);
       }
       const changed = run(["diff", "--cached", "--name-only", "HEAD", "--", rel[i]], root, tmpEnv);
       if (!changed.ok) return refuse(`could not diff '${opts.paths[i]}': ${errorLine(changed.stderr)}`);
-      if (!changed.stdout.trim()) return refuse(`'${opts.paths[i]}' has no change against HEAD`);
+      if (!changed.stdout.trim()) return refuse(`'${opts.paths[i]}' has no change against HEAD${caseHint(rel[i])}`);
     }
     const preview = run(["diff", "--cached", "-M", "--name-status", "-z", "HEAD"], root, tmpEnv);
     report.files = parseNameStatus(preview.stdout);

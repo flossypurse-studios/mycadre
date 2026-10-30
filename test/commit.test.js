@@ -16,8 +16,11 @@ function g(args, cwd) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-function setup() {
-  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "mycadre-commit-")));
+function setup({ logical = false } = {}) {
+  // `logical` keeps the tmpdir path as the OS hands it out — on macOS that is
+  // /var/..., reached through the /var -> /private/var symlink.
+  const made = mkdtempSync(path.join(tmpdir(), "mycadre-commit-"));
+  const dir = logical ? made : realpathSync(made);
   const repo = path.join(dir, "repo");
   mkdirSync(repo);
   g(["init", "-q", "-b", "main"], repo);
@@ -300,6 +303,75 @@ test("commit: a path through a symlinked directory refuses like plain git, and w
     const r = mc(ctx, ["-m", "x", "alias/a.txt"]);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /beyond a symbolic link/);
+    assert.deepEqual(snapshot(ctx.repo), before);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("commit: an absolute path that reaches the repo through a symlink above it is accepted, as git add accepts it", () => {
+  const ctx = setup({ logical: true });
+  try {
+    // Make sure there is a symlink above the repo even where tmpdir has none.
+    const viaLink = path.join(ctx.dir, "via");
+    symlinkSync(ctx.dir, viaLink);
+    write(ctx.repo, "a.txt", "changed\n");
+    write(ctx.repo, "src/one.txt", "changed\n");
+    const logicalA = path.join(ctx.repo, "a.txt"); // /var/... on macOS
+    const linkedOne = path.join(viaLink, "repo", "src", "one.txt");
+    assert.equal(spawnSync("git", ["add", "--dry-run", "--", logicalA, linkedOne], { cwd: ctx.repo, env: env() }).status, 0);
+
+    const r = mcJson(ctx, ["-m", "abs", logicalA, linkedOne]);
+    assert.equal(r.status, 0, r.out);
+    assert.deepEqual(changed(ctx.repo, r.json.sha), ["M a.txt", "M src/one.txt"]);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("commit: run from a symlink to the repo root, relative and absolute paths through it are accepted", () => {
+  const ctx = setup({ logical: true });
+  try {
+    const rootLink = path.join(ctx.dir, "rootlink");
+    symlinkSync(ctx.repo, rootLink);
+    write(ctx.repo, "a.txt", "changed\n");
+    write(ctx.repo, "b.txt", "changed\n");
+    const r = mcJson(ctx, ["-m", "via root link", "a.txt", path.join(rootLink, "b.txt")], { cwd: rootLink });
+    assert.equal(r.status, 0, r.out);
+    assert.deepEqual(changed(ctx.repo, r.json.sha), ["M a.txt", "M b.txt"]);
+
+    // A symlinked directory inside the repo is still refused when reached this way.
+    mkdirSync(path.join(ctx.repo, "real"));
+    write(ctx.repo, "real/x.txt", "x\n");
+    symlinkSync("real", path.join(ctx.repo, "alias"));
+    const before = snapshot(ctx.repo);
+    const s = mc(ctx, ["-m", "x", path.join(rootLink, "alias", "x.txt")], { cwd: rootLink });
+    assert.equal(s.status, 1, s.out);
+    assert.match(s.out, /beyond a symbolic link/);
+    assert.deepEqual(snapshot(ctx.repo), before);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("commit: on a case-insensitive volume, a wrongly-cased path commits the tracked path", (t) => {
+  const ctx = setup();
+  try {
+    if (!existsSync(path.join(ctx.repo, "A.TXT"))) {
+      t.skip("case-sensitive filesystem");
+      return;
+    }
+    write(ctx.repo, "src/one.txt", "changed\n");
+    const r = mcJson(ctx, ["-m", "case", "SRC/ONE.txt"]);
+    assert.equal(r.status, 0, r.out);
+    assert.deepEqual(changed(ctx.repo, r.json.sha), ["M src/one.txt"]);
+
+    // A deleted file has no on-disk case to read: refused, naming the tracked path.
+    unlinkSync(path.join(ctx.repo, "src/two.txt"));
+    const before = snapshot(ctx.repo);
+    const s = mc(ctx, ["-m", "x", "src/TWO.txt"]);
+    assert.equal(s.status, 1, s.out);
+    assert.match(s.out, /case doesn't match the tracked path `src\/two\.txt`/);
     assert.deepEqual(snapshot(ctx.repo), before);
   } finally {
     ctx.cleanup();
