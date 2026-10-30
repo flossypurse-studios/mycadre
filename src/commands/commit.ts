@@ -180,12 +180,14 @@ function realishPath(p: string, root: string): { real: string; beyondSymlink: bo
     if (path.dirname(a) === a) break;
   }
   const entry = ancestors.reverse().find((a) => realOrNull(a) === root);
-  if (entry !== undefined) {
-    let cur = entry;
-    for (const c of path.relative(entry, dir).split(path.sep).filter(Boolean)) {
-      cur = path.join(cur, c);
-      if (isSymlink(cur)) return { real: p, beyondSymlink: true };
-    }
+  // Never passes through the root: outside the repository, even when a symlink
+  // out there points into it (git add refuses that too). Left unresolved so the
+  // caller sees it outside.
+  if (entry === undefined) return { real: p, beyondSymlink: false };
+  let cur = entry;
+  for (const c of path.relative(entry, dir).split(path.sep).filter(Boolean)) {
+    cur = path.join(cur, c);
+    if (isSymlink(cur)) return { real: p, beyondSymlink: true };
   }
   const realParent = realDir(dir);
   return { real: path.join(realParent, diskCase(realParent, base)), beyondSymlink: false };

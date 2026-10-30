@@ -354,6 +354,22 @@ test("commit: run from a symlink to the repo root, relative and absolute paths t
   }
 });
 
+test("commit: a symlink outside the repo that points into a subdirectory is outside the repository, as git add says", () => {
+  const ctx = setup({ logical: true });
+  try {
+    write(ctx.repo, "src/one.txt", "changed\n");
+    const intoSrc = path.join(ctx.dir, "into-src");
+    symlinkSync(path.join(ctx.repo, "src"), intoSrc);
+    const before = snapshot(ctx.repo);
+    const r = mc(ctx, ["-m", "x", path.join(intoSrc, "one.txt")]);
+    assert.equal(r.status, 1, r.out);
+    assert.match(r.out, /outside the repository/);
+    assert.deepEqual(snapshot(ctx.repo), before);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
 test("commit: on a case-insensitive volume, a wrongly-cased path commits the tracked path", (t) => {
   const ctx = setup();
   try {
