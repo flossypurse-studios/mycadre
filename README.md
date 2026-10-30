@@ -54,6 +54,7 @@ mycadre clean                # prune worktrees git already dropped
 | `mycadre clean` | Prune git worktrees and drop stale tracking entries. |
 | `mycadre doctor [--json]` | Check that git, your repo, `mycadre.json`, `worktreeDir`, and tracked worktrees are all in a healthy state. Exits 1 if anything's wrong. |
 | `mycadre fresh [--live <url>] [--base <branch>] [--remote <name>] [--no-pr] [--json]` | Read-only check before you diff, review, push, open a PR, deploy or publish: asks the remote whether HEAD is built on its default branch, whether your local default branch is behind, and whether the branch's PR is still open at HEAD. Exit 0 fresh, 1 stale, 2 could not check. See [Is my branch fresh?](#is-my-branch-fresh). |
+| `mycadre commit -m <message> [--dry-run] [--lock-timeout <s>] [--json] <path>...` | Commit exactly the named paths in a checkout other agents share, and nothing else: anything someone else has staged stays staged and out of the commit. Waits out a held `index.lock`. Exit 0 committed, 1 refused or failed, 2 a lock was still held. See [Committing in a shared checkout](#committing-in-a-shared-checkout). |
 | `mycadre --version` | Print the installed version (also `-v`). |
 | `mycadre --help` | Show usage help (also `-h`). |
 
@@ -104,6 +105,53 @@ when your branch tracks a fork, and looks the PR up on that repo.
 `fresh` never checks out, rebases, merges or pushes. The only thing it writes is the
 `git fetch` of commits it compares against, which updates remote-tracking refs and
 `FETCH_HEAD` (no tags, no submodules, no background gc).
+
+## Committing in a shared checkout
+
+Worktrees are the clean answer, but sometimes several agents are working in one
+checkout anyway. Then `git commit` goes wrong quietly. Agent A stages its files,
+agent B runs `git commit`, and A's files land in B's commit under B's message. Or
+the commit fails on `index.lock` because another git process holds it, and the
+agent gives up, or retries by deleting the lock out from under that process.
+`mycadre commit` commits what you name and nothing else:
+
+```sh
+mycadre commit -m "Fix the login redirect" src/login.ts test/login.test.ts
+mycadre commit -m "Drop the old cache" --dry-run src/cache/   # show, write nothing
+```
+
+```
+✓ committed 4d1c2ab on 9e0b7f1
+    M src/login.ts
+    A test/login.test.ts
+4d1c2ab8e1f0c9a7b3d2e6f5a4c3b2a1908f7e6d
+```
+
+- **Only your paths — but a directory means everything under it.** Naming a file
+  commits only that file, and anything else already staged stays staged, exactly
+  as it was. Naming a directory commits every add, change, deletion and rename
+  under it, including a file another agent staged there — that's the same as
+  plain `git add <dir>`. Name files when you want that isolation, or check first
+  with `--dry-run`. Paths are required; there is no "commit everything" mode.
+- **Refuses before writing.** A path that matches nothing, has no change against
+  HEAD, is ignored, or is outside the repo is exit `1` with nothing changed.
+- **Waits for locks.** If another process holds `index.lock`, it retries with
+  backoff for 30 seconds (`--lock-timeout <s>` to change), then exits `2` and names
+  the lock. It never deletes a lock: if no git process is running, the lock is
+  stale and yours to remove.
+- **Builds on the real HEAD.** If another commit lands while yours runs, yours is
+  built on top of it, never reverting it.
+- **Hooks run.** It is `git commit --only` underneath, so pre-commit and
+  commit-msg hooks run as normal and see only your paths staged. It never passes
+  `--no-verify`. If a hook says no, everything is left as it was.
+
+Exit codes: `0` committed, `1` refused or the commit failed, `2` a lock was still
+held when the wait ran out. `--json` prints the sha, its parent and every file.
+
+One gap to know about: a new file is marked intent-to-add in the shared index just
+before the commit (git needs that to commit it by path). Another agent's plain
+`git commit` ignores such an entry, but a `git commit -a` in that moment would
+take it.
 
 ## Configuration
 
